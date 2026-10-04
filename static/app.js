@@ -47,6 +47,7 @@ function refreshAuth() {
   $('.nav [data-page="submissions"]').textContent = ['director','admin'].includes(user?.role) ? 'Einreichungen' : 'Einreichen';
   $$('.director-only').forEach(el => { el.hidden = !['director', 'admin'].includes(user?.role); });
   $$('.admin-only').forEach(el => { el.hidden = user?.role !== 'admin'; });
+  $('.nav').dataset.items=$$('.nav a').filter(el=>!el.hidden).length;
   $('#login-button').textContent = user ? user.username : needsSetup ? 'App einrichten' : 'Anmelden';
 }
 function openAuth() {
@@ -149,7 +150,7 @@ function renderRanks() {
   }
   $('#ranking-list').innerHTML = `<table class="rank-table"><thead><tr><th>#</th><th>Spieler</th><th>Wertung</th><th class="games-col">Partien</th><th>Letzte Partie</th></tr></thead><tbody>${filtered.map(p => {
     const initials = p.name.split(/[ ,]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('');
-    return `<tr><td class="rank-num">${p.games ? ranks.filter(r => r.games && r.rating > p.rating).length + 1 : '–'}</td><td><button class="player-link" data-player="${p.id}"><span class="avatar" aria-hidden="true">${escapeHtml(initials)}</span><span>${escapeHtml(p.name)}</span></button></td><td><span class="rating-value">${p.display}</span>${p.provisional ? '<span class="question-mark" title="Vorläufige Wertung">?</span>' : ''}</td><td class="games-col">${p.games}</td><td>${p.games ? delta(p.diff) : '<span class="muted">–</span>'}</td></tr>`;
+    return `<tr><td class="rank-num">${p.games ? ranks.filter(r => r.games && r.rating > p.rating).length + 1 : '–'}</td><td><button class="player-link" data-player="${p.id}"><span class="avatar" aria-hidden="true">${escapeHtml(initials)}</span><span class="player-name">${escapeHtml(p.name)}<small class="mobile-player-games">${p.games} Partien</small></span></button></td><td><span class="rating-value">${p.display}</span>${p.provisional ? '<span class="question-mark" title="Vorläufige Wertung">?</span>' : ''}</td><td class="games-col">${p.games}</td><td>${p.games ? delta(p.diff) : '<span class="muted">–</span>'}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 $$('[data-category]').forEach(button => button.addEventListener('click', async () => {
@@ -209,7 +210,7 @@ async function showPlayer(id) {
   $('#detail-content').innerHTML = `<div class="eyebrow">SPIELERPROFIL</div><h2>${escapeHtml(data.player.name)}</h2><div class="profile-ratings">${['blitz','rapid'].map(cat => {
     const r = data.ratings[cat];
     return `<div class="card"><span class="muted">${catName(cat)}</span><strong>${r?.display ?? 1500}${r?.provisional !== false ? '?' : ''}</strong><span class="muted">${r?.games ?? 0} Partien · RD ${(r?.rd ?? 500).toFixed(1)}</span></div>`;
-  }).join('')}</div><h3>${catName(category)} · Wertungsverlauf</h3>${chart}${history.length ? `<div class="table-scroll"><table class="detail-table"><thead><tr><th>Turnier / Runde</th><th>Gegner</th><th>Ergebnis</th><th>Wertung</th></tr></thead><tbody>${history.map(h => `<tr><td>${escapeHtml(h.name)}<br><span class="muted">${formatDate(h.date)} · R${h.round}</span></td><td>${escapeHtml(h.opponent)}<br><span class="muted">${h.color}</span></td><td>${h.result === .5 ? '½' : h.result}</td><td>${h.after}<br>${delta(h.diff)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Noch keine gewerteten Partien in dieser Kategorie.</p>'}`;
+  }).join('')}</div><h3>${catName(category)} · Wertungsverlauf</h3>${chart}${history.length ? `<div class="mobile-history">${history.map(h => `<article class="history-card"><div><strong>${escapeHtml(h.opponent)}</strong><small>${h.color} · ${formatDate(h.date)} · R${h.round}</small></div><div class="history-score"><span>Ergebnis ${h.result === .5 ? '½' : h.result}</span><strong>${h.after}</strong>${delta(h.diff)}</div><p>${escapeHtml(h.name)}</p></article>`).join('')}</div><div class="table-scroll profile-history-table"><table class="detail-table"><thead><tr><th>Turnier / Runde</th><th>Gegner</th><th>Ergebnis</th><th>Wertung</th></tr></thead><tbody>${history.map(h => `<tr><td>${escapeHtml(h.name)}<br><span class="muted">${formatDate(h.date)} · R${h.round}</span></td><td>${escapeHtml(h.opponent)}<br><span class="muted">${h.color}</span></td><td>${h.result === .5 ? '½' : h.result}</td><td>${h.after}<br>${delta(h.diff)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Noch keine gewerteten Partien in dieser Kategorie.</p>'}`;
   $('#detail-dialog').showModal();
 }
 document.addEventListener('click', event => {

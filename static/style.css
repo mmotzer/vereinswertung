@@ -11,3 +11,37 @@ html{scroll-padding-top:20px}body{min-height:100dvh}main,.card,.form-grid>*,.ass
 @media(max-width:380px){.brand{font-size:14px}.brand small{font-size:9px}.rank-table .avatar{display:none}.rank-table th{font-size:8px}.rank-table th:nth-child(3){width:23%}.rank-table th:nth-child(5){width:18%}.player-link{font-size:12px}.stat strong{font-size:22px}.nav a{font-size:13px}}
 
 .member-registration{border-top:1px solid var(--line);margin-top:24px;padding-top:18px}.member-registration summary{cursor:pointer;min-height:44px;font-size:14px;font-weight:600}.member-registration form{margin-top:16px}.member-registration p{font-size:13px}#submission-form>.check-label{align-items:flex-start;margin-bottom:20px}#submission-form>.check-label input{flex-shrink:0;margin-top:3px}
+
+/* Compact phone hierarchy, generous touch targets and readable player names. */
+.mobile-player-games{display:none}
+@media(max-width:700px){
+ html{scroll-padding-top:140px}
+ .header{padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:12px}
+ .brand-icon{width:36px;height:40px;font-size:28px}.brand{font-size:15px}.brand small{font-size:10px;line-height:1.4}
+ .shell{padding-top:8px}.nav{margin-bottom:20px;padding:6px 0;gap:4px;top:env(safe-area-inset-top)}
+ .nav a{font-size:13px;padding:8px 6px;min-height:48px;flex-basis:30%;line-height:1.3}
+ h1{font-size:34px;line-height:1.15;margin-bottom:12px}.eyebrow{margin-bottom:10px}.lead{font-size:14px;line-height:1.6;margin-bottom:18px}
+ .rank-controls{margin:18px 0 16px;gap:8px}.segments button{min-height:48px;font-size:15px}.rank-controls .text-link{font-size:12px;padding:8px 0}
+ .stats{margin:0 0 18px}.stat{padding:12px 10px}.stat strong{font-size:25px}.stat span{font-size:11px}
+ .list-toolbar{margin:18px 0 12px;gap:8px}.search-label{border:1px solid var(--line);border-radius:10px;padding:0 12px;background:var(--paper)}.search-label input{margin:0;min-height:48px;font-size:16px}
+ .rank-table th{font-size:10px;padding:12px 6px}.rank-table td{padding:14px 6px}.rank-table th:nth-child(1){width:7%}.rank-table th:nth-child(3){width:23%}.rank-table th:nth-child(5){width:18%}
+ .player-link{min-height:48px;font-size:14px;gap:8px}.player-name{display:block;line-height:1.4}.mobile-player-games{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:3px}.rating-value{font-size:21px}.delta{font-size:12px}
+ .card{padding:20px 16px;margin-bottom:16px}.card h2{font-size:20px}.form-grid{gap:18px}label{font-size:13px}input,select,textarea{min-height:48px}.button{min-height:48px;font-size:14px}.check-label input{min-height:0}
+ #submission-form>.check-label{padding:14px 12px;border:1px solid var(--line);border-radius:10px;background:#f0f4e9;gap:12px;font-size:14px;line-height:1.5}
+ #submission-load,#submission-selection>.button{width:100%}#submission-selection{margin-top:20px;scroll-margin-top:140px}
+ #submission-games .check-label,#lichess-games .check-label{display:flex;align-items:flex-start;gap:12px;padding:16px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font-size:14px;line-height:1.55;margin:0 0 10px}
+ #submission-games input,#lichess-games input{flex:0 0 22px;width:22px;height:22px;min-height:0;margin-top:1px;accent-color:var(--ink)}
+ .tournament-card{gap:14px}.tournament-card .button{width:100%;font-size:14px}.tournament-card p{font-size:13px}.badge{font-size:11px}
+ .user-actions .button{flex:1}.user-row small{font-size:12px}.footnote{font-size:12px;line-height:1.6}
+ dialog{border-radius:16px;padding:48px 16px 20px;overscroll-behavior:contain}.dialog-close{position:sticky;float:right;top:0;margin:-42px -8px 0 0;background:var(--paper);z-index:2}
+ .detail-table{font-size:13px}.detail-table th{font-size:11px}.detail-table td{padding:12px 7px}.table-scroll{border:1px solid var(--line);border-radius:10px;margin-bottom:16px}.table-scroll .detail-table{min-width:0;table-layout:fixed}.detail-table th{overflow-wrap:anywhere}
+ footer{margin-top:32px;padding-bottom:24px}.auth-screen h1{font-size:34px}
+}
+@media(max-width:360px){.brand small{max-width:180px}.header .button{max-width:68px;padding:8px}.rank-table th:nth-child(3){width:25%}.player-link{font-size:13px}.rating-value{font-size:19px}.stat{padding:10px 8px}.stat span{font-size:10px}}
+
+@media(max-width:700px){.nav[data-items="4"] a{flex-basis:45%}}
+
+@media(max-width:700px){#page-rankings>.eyebrow,#page-rankings .page-heading .lead{display:none}#page-rankings h1{font-size:30px;margin-bottom:10px}.rank-controls{margin-top:12px}}
+
+.mobile-history{display:none}
+@media(max-width:700px){.profile-history-table{display:none}.mobile-history{display:grid;gap:12px}.history-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:16px;border:1px solid var(--line);border-radius:12px}.history-card strong{display:block;font-size:15px;overflow-wrap:anywhere}.history-card small{display:block;font-size:12px;color:var(--muted);margin-top:4px}.history-score{text-align:right;font-variant-numeric:tabular-nums}.history-score>span:first-child{font-size:12px;color:var(--muted)}.history-score strong{font-size:20px}.history-card p{grid-column:1/-1;font-size:12px;color:var(--muted);margin:0;border-top:1px solid var(--line);padding-top:8px;overflow-wrap:anywhere}}
