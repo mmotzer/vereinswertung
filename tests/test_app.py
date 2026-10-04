@@ -153,6 +153,23 @@ class AppTests(unittest.TestCase):
         with storage.open_db(self.path) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
 
+    def test_pwa_boot_assets_are_public_but_club_data_requires_login(self):
+        anonymous=self.app.test_client()
+        with anonymous.get('/sw.js') as response:
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.mimetype,'application/javascript')
+            self.assertEqual(response.headers['Cache-Control'],'no-cache')
+        with anonymous.get('/static/manifest.webmanifest') as response:
+            self.assertEqual(response.mimetype,'application/manifest+json')
+            manifest=json.loads(response.data)
+            self.assertEqual(manifest['scope'],'/')
+            self.assertEqual(manifest['display'],'standalone')
+            self.assertEqual({icon['sizes'] for icon in manifest['icons']},{'192x192','512x512'})
+        for path in ['/static/pwa.js','/static/offline.html','/static/offline.css','/static/icon-192.png','/static/icon-512.png']:
+            with anonymous.get(path) as response:
+                self.assertEqual(response.status_code,200,path)
+        self.assertEqual(anonymous.get('/api/rankings').status_code,401)
+
     def test_preview_does_not_write_players_or_ratings(self):
         p=self.preview(self.payload())
         self.assertEqual(len(p['tournament']['games']),2)

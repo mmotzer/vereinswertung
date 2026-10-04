@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#193d35">
   <meta name="description" content="Die vereinsinterne Glicko-2-Rangliste für Blitz und Schnellschach.">
   <title>SK1912 Ludwigshafen · Vereinswertung</title>
@@ -10,7 +10,7 @@
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
-</head>
+<link rel="apple-touch-icon" href="/static/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SK1912 Wertung"><script src="/static/pwa.js" defer></script></head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
   <header class="header">
@@ -70,5 +70,5 @@
   <dialog id="account-dialog"><button class="dialog-close" data-close="account-dialog" aria-label="Schließen">×</button><h2>Dein Zugang</h2><p id="account-name"></p><form id="password-form"><label>Bisheriges Passwort<input name="old_password" type="password" autocomplete="current-password" maxlength="200" required></label><label>Neues Passwort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="button">Passwort ändern</button></form><hr><button id="logout-button" class="button secondary">Abmelden</button></dialog>
   <dialog id="undo-dialog"><button class="dialog-close" data-close="undo-dialog" aria-label="Schließen">×</button><h2>Import zurücknehmen?</h2><p>Alle späteren Wertungen werden ohne dieses Turnier neu berechnet. Die Originaldatei bleibt für die Nachvollziehbarkeit erhalten.</p><form id="undo-form"><label id="undo-label">Turniername zur Bestätigung<input id="undo-name" autocomplete="off" required></label><button class="button danger">Zurücknehmen & neu berechnen</button></form></dialog>
   <dialog id="reset-dialog"><button class="dialog-close" data-close="reset-dialog" aria-label="Schließen">×</button><h2>Passwort zurücksetzen</h2><p id="reset-name"></p><form id="reset-form"><label>Neues Startpasswort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="button">Passwort setzen</button></form></dialog>
-</body>
+<button id="pwa-install" class="button secondary small pwa-install" type="button" hidden>App installieren</button><dialog id="pwa-dialog" aria-labelledby="pwa-title"><h2 id="pwa-title">Auf dem Handy installieren</h2><p><strong>iPhone / iPad:</strong> Diese Seite in Safari öffnen, „Teilen“ antippen und „Zum Home-Bildschirm“ wählen.</p><p><strong>Android:</strong> Im Browsermenü „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen.</p><p>Danach öffnet sich die Vereinswertung wie eine App. Für Ranglisten und Importe brauchst du eine Internetverbindung.</p><button id="pwa-close" class="button" type="button">Verstanden</button></dialog></body>
 </html>

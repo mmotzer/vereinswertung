@@ -119,6 +119,8 @@ def create_app(config=None):
 
     @app.after_request
     def headers(response):
+        if request.path == "/static/manifest.webmanifest":
+            response.mimetype = "application/manifest+json"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -169,6 +171,12 @@ def create_app(config=None):
                 raise TooManyRequests("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.")
             db().execute("""INSERT INTO attempts(key,count,expires) VALUES(?,1,?)
                             ON CONFLICT(key) DO UPDATE SET count=count+1""", (key, time.time() + 900))
+
+    @app.get("/sw.js")
+    def service_worker():
+        response = send_from_directory(ROOT / "static", "sw.js", mimetype="application/javascript")
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/")
     def index():
@@ -600,7 +608,7 @@ SOURCE_FILES = ["app.py", "lichess_import.py", "storage.py", "rating.py", "trf.p
 def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
     names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
-        "static/style.css", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
+        "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/browser_fixture.py",
         "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
