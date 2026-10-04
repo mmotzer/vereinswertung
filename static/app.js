@@ -129,7 +129,7 @@ async function loadRanks() {
   $('#ranking-list').innerHTML = '<p class="loading">Rangliste wird geladen …</p>';
   const data = await api('/api/rankings?category=' + requested);
   if (requested !== category) return;
-  ranks = data.players;
+  ranks = data.players.filter(p => p.games > 0);
   const played = ranks.filter(p => p.games > 0);
   $('#rank-stats').innerHTML = `<div class="stat"><strong>${played.length}</strong><span>Spieler mit ${catName(category)}partien</span></div><div class="stat"><strong>${ranks.reduce((n, p) => n + p.games, 0) / 2}</strong><span>Gewertete Partien</span></div><div class="stat"><strong>${ranks.filter(p => p.games && !p.provisional).length}</strong><span>Gefestigte Wertungen</span></div>`;
   renderRanks();
@@ -138,7 +138,7 @@ function renderRanks() {
   const search = $('#player-search').value.toLocaleLowerCase('de');
   const filtered = ranks.filter(p => p.name.toLocaleLowerCase('de').includes(search) && (!$('#established-only').checked || (p.games > 0 && !p.provisional)));
   if (!ranks.length) {
-    $('#ranking-list').innerHTML = empty('Die erste Partie macht den Anfang.', 'Noch keine Spieler angelegt. Nach dem ersten Turnierimport erscheint hier eure Vereinsrangliste.', user ? '<a class="button" href="#import">Erstes Turnier importieren →</a>' : '');
+    $('#ranking-list').innerHTML = empty('Die erste Partie macht den Anfang.', 'Noch keine gewerteten Partien in dieser Kategorie. Nach dem ersten Turnierimport erscheint hier eure Vereinsrangliste.', user ? '<a class="button" href="#import">Erstes Turnier importieren →</a>' : '');
     return;
   }
   if (!filtered.length) {
