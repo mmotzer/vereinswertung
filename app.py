@@ -173,6 +173,14 @@ def create_app(config=None):
     def index():
         return send_from_directory(ROOT / "static", "index.html" if g.user else "login.html")
 
+    @app.get("/print")
+    def print_rankings():
+        if not g.user:
+            return redirect("/")
+        response = send_from_directory(ROOT / "static", "print.html")
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.get("/api/health")
     def health():
         db().execute("SELECT 1").fetchone()
@@ -504,6 +512,7 @@ def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
     names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
         "static/style.css", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
+        "static/print.html", "static/print.css", "static/print.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/browser_fixture.py",
         "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
     names += [str(p.relative_to(ROOT)) for p in (ROOT / "reference").rglob("*.scala")]
