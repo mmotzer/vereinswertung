@@ -37,7 +37,7 @@
       </section>
       <section id="page-tournaments" class="page" hidden><div class="eyebrow">DIE PARTIEN DAHINTER</div><h1>Turniere</h1><p class="lead">Alle gewerteten Ergebnisse an einem Ort.</p><div id="tournament-list"></div></section>
       <section id="page-import" class="page" hidden>
-        <div class="eyebrow">FÜR TURNIERLEITER</div><h1>Ein Turnier hinzufügen.</h1><p class="lead">TRF hochladen. Zuordnung prüfen. Wertung speichern.</p>
+        <div class="eyebrow">FÜR TURNIERLEITER</div><h1>Partien hinzufügen.</h1><p class="lead">TRF oder Lichess-Match laden. Zuordnung prüfen. Wertung speichern.</p>
         <div class="steps"><span class="current">1 · Datei</span><span>2 · Vorschau</span><span>3 · Speichern</span></div>
         <form id="upload-form" class="card upload-card"><label class="file-drop" for="trf-file"><span class="upload-icon" aria-hidden="true">↑</span><strong>TRF-Datei auswählen</strong><span>Export aus SWISS-CHESS · maximal 1 MB</span><input id="trf-file" type="file" accept=".trf,.txt" required></label><button class="button" type="submit">Datei prüfen →</button></form>
         <form id="import-form" class="card" hidden>
@@ -47,6 +47,9 @@
           <div id="import-summary" class="info-strip"></div><h3>Spielerzuordnung</h3><p class="muted">Bekannte Namen bleiben zugeordnet. Neue Spieler starten in beiden Kategorien bei 1500. Ähnliche Namen bitte prüfen.</p><div id="assignments"></div><div id="import-warnings"></div><button class="button" type="submit">Wertungsänderungen berechnen →</button>
         </form>
         <div id="import-preview" class="card" hidden></div>
+        <form id="lichess-match-form" class="card"><h2>Lichess-Match laden</h2><p>Beide Lichess-Namen und Spieltag eingeben, anschließend die zu wertenden Partien auswählen.</p><div class="form-grid"><label>Erster Lichess-Name<input id="lichess-first" required maxlength="30"></label><label>Zweiter Lichess-Name<input id="lichess-second" required maxlength="30"></label><label>Spieltag (deutsche Zeit)<input id="lichess-day" type="date" required></label></div><button class="button" type="submit">Gemeinsame Partien laden →</button></form>
+        <form id="lichess-links-form" class="card"><h2>Lichess-Partien hinzufügen</h2><p>Bis zu 30 Partielinks, jeweils in einer neuen Zeile. Nur abgeschlossene Standard-Partien in Blitz oder Schnellschach.</p><label>Partielinks<textarea id="lichess-links" rows="5" maxlength="12000" placeholder="https://lichess.org/abcdefgh" required></textarea></label><button class="button" type="submit">Partien prüfen →</button></form>
+        <form id="lichess-mapping-form" class="card" hidden><h2>Vereinsspieler zuordnen</h2><div id="lichess-games"></div><div id="lichess-assignments"></div><label class="check-label"><input id="lichess-consent" type="checkbox" required> Beide Spieler haben vor der jeweiligen Partie der Vereinswertung zugestimmt – für alle aufgeführten Partien.</label><p class="note">Lichess-Zahlen werden ignoriert. Der Zeitpunkt des letzten Zuges bestimmt die Einordnung; TRF-Partien verwenden weiterhin 12:00 UTC pro Rundentag. Jeder Link wird als einzelner Import gespeichert und kann zurückgenommen werden.</p><button class="button" type="submit">Gemeinsame Vorschau berechnen →</button></form><div id="lichess-preview" class="card" hidden></div>
       </section>
       <section id="page-help" class="page" hidden>
         <div class="eyebrow">TRANSPARENT & NACHVOLLZIEHBAR</div><h1>Eine Zahl, die mitlernt.</h1><p class="lead">Glicko-2 misst Spielstärke und weiß,<br>wie sicher diese Einschätzung ist.</p>

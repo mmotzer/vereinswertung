@@ -126,6 +126,33 @@ class AppTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM games').fetchone()[0],2)
 
+    def test_lichess_batch_consent_selection_atomicity_and_duplicate(self):
+        from unittest.mock import patch
+        import lichess_import
+        self.commit(self.payload())
+        players = {p['name']:p['id'] for p in self.client.get('/api/rankings').json['players']}
+        mapping = {'Lichess: Anna':players['Alpha, Anna'],'Lichess: Ben':players['Beta, Ben']}
+        def exported(gid,cat,stamp):
+            return lichess_import.parse_game({'id':gid,'variant':'standard','speed':cat,'status':'mate','winner':'white',
+                'lastMoveAt':stamp,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+        items = [exported('abcdefgh','blitz',1758100000000),exported('ijklmnop','rapid',1758101000000)]
+        with patch('lichess_import.fetch_games',return_value=items):
+            inspect = self.post('/api/lichess/inspect',{'links':'links'}).json
+        self.assertEqual(self.post('/api/import/commit',{'token':inspect['token']}).status_code,400)
+        request = {'token':inspect['token'],'mapping':mapping,'selected':['abcdefgh','ijklmnop'],'consent':False}
+        self.assertEqual(self.post('/api/lichess/preview',request).status_code,400)
+        request['consent']=True
+        before=self.client.get('/api/rankings').json
+        preview=self.post('/api/lichess/preview',request)
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(preview.json['count'],2)
+        self.assertEqual([(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']],[(p['id'],p['rating'],p['games']) for p in before['players']])
+        self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)
+        self.assertEqual(len(self.client.get('/api/tournaments').json['tournaments']),3)
+        self.assertEqual(self.post('/api/lichess/preview',request).status_code,400)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
+
     def test_preview_does_not_write_players_or_ratings(self):
         p=self.preview(self.payload())
         self.assertEqual(len(p['tournament']['games']),2)

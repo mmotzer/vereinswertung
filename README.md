@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.6 .
+   docker build -t vereinswertung:1.7 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.6` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.7` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -122,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.6 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.7 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen
@@ -157,3 +157,12 @@ AGPL-3.0-or-later; MIT-Hinweise der scalachess-Quellen bleiben erhalten.
 Öffentlicher Quellcode-Download unter `/source.zip`. Bei Änderungen neue Quellen
 mit ausliefern. Er enthält keine Datenbank oder Zugangsdaten. Für eigene zusätzliche
 Quellcodedateien die Allowlist in `app.py` ergänzen.
+
+
+### Lichess-Matches und Partielinks
+
+Unter „Importieren“ zwei Lichess-Namen und den Spieltag (Europe/Berlin) eingeben und gemeinsame Partien laden. Alternativ bis zu 30 direkte Partielinks einfügen. In der Prüfung einzelne Partien auswählen und Konten bestehenden Vereinsspielern zuordnen. Der Turnierleiter bestätigt die vor der Partie vereinbarte Zustimmung beider Spieler für alle ausgewählten Partien. Vorschau und gemeinsames Speichern erfolgen atomar; ein Fehler speichert keine der Partien.
+
+Nur abgeschlossene Standard-Blitz- und Schnellschachpartien menschlicher Konten werden gewertet, unabhängig vom Lichess-Rated-Modus. Die externen Ratings werden ignoriert. Lichess-Konten werden als eigene Aliase gespeichert; der Name des Vereinsspielers bleibt erhalten. Jede Partie erscheint als eigener zurücknehmbarer Import. Doppelte aktive Partie-IDs werden abgewiesen. Zurückgenommene Partien können erneut importiert werden.
+
+Chronologie: Lichess-Partien verwenden `lastMoveAt` (Zeitpunkt des letzten Zuges, nicht zwingend Aufgabezeitpunkt). Die gesamte Wertung wird nach diesen Zeiten neu berechnet, einschließlich bereits gespeicherter Folgepartien. TRF-Partien verwenden weiterhin den angenommenen Zeitpunkt 12:00 UTC je Rundentag. Mehrtägige überlappende TRF-Turniere werden weiterhin abgewiesen. Die Zustimmung wird vom Turnierleiter bestätigt; eine eigenständige digitale Zustimmung der Spieler ist nicht implementiert.

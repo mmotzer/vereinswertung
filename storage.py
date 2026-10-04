@@ -173,6 +173,8 @@ def import_tournament(db, payload, owner):
     # Normalize row ordering and ignore filename/title for duplicate detection.
     canonical = {"category": category, "dates": dates,
                  "games": sorted(games, key=lambda g: (g["round"], g["white"], g["black"]))}
+    if payload.get("external_id"):
+        canonical["external_id"] = payload["external_id"]
     fingerprint = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
     raw_hash = hashlib.sha256(payload["text"].encode()).hexdigest()
     if db.execute("SELECT id FROM tournaments WHERE active=1 AND (fingerprint=? OR (raw_hash=? AND category=?))",
@@ -196,7 +198,7 @@ def import_tournament(db, payload, owner):
                       json.dumps(dates), json.dumps(payload["parsed"]["skipped"]), sequence)).lastrowid
     for g in games:
         db.execute("INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
-                   (tid, g["round"], g["white"], g["black"], g["score"], timestamp(dates[g["round"] - 1])))
+                   (tid, g["round"], g["white"], g["black"], g["score"], payload.get("played", timestamp(dates[g["round"] - 1]))))
     rebuild(db)
     return tid
 
@@ -211,7 +213,7 @@ def rebuild(db):
     db.execute("DELETE FROM ratings")
     state = {}
     for g in db.execute("""SELECT g.*,t.category FROM games g JOIN tournaments t ON t.id=g.tournament_id
-                            WHERE t.active=1 ORDER BY t.date,t.sequence,t.id,g.round,g.id"""):
+                            WHERE t.active=1 ORDER BY g.played,t.sequence,t.id,g.round,g.id"""):
         cat = g["category"]
         wkey, bkey = (g["white"], cat), (g["black"], cat)
         w, b = state.get(wkey, Rating()), state.get(bkey, Rating())
@@ -239,7 +241,7 @@ def ranking(db, category, at=None):
         r = live(rating_from_row(p), at)
         hist = db.execute("""SELECT h.before,h.after FROM history h JOIN games g ON g.id=h.game_id
                             JOIN tournaments t ON t.id=g.tournament_id WHERE h.player_id=? AND t.category=?
-                            ORDER BY t.date DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC LIMIT 1""", (p["id"], category)).fetchone()
+                            ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC LIMIT 1""", (p["id"], category)).fetchone()
         diff = int(json.loads(hist["after"])["rating"]) - int(json.loads(hist["before"])["rating"]) if hist else 0
         rows.append({"id": p["id"], "name": p["name"], **r.json(), "display": int(r.rating),
                      "provisional": r.rd >= 110, "rankable": r.rd <= 75, "diff": diff})

@@ -315,3 +315,46 @@ window.addEventListener('hashchange', navigate);
     refreshAuth(); await navigate();
   } catch (error) { toast('Verbindung zur App fehlgeschlagen: ' + error.message, true); }
 })();
+
+let lichessInfo = null, lichessGeneration = 0;
+function invalidateLichess() { lichessGeneration++; $('#lichess-preview').hidden = true; }
+$('#lichess-links').addEventListener('input', () => { invalidateLichess(); lichessInfo = null; $('#lichess-mapping-form').hidden = true; });
+$('#lichess-mapping-form').addEventListener('input', invalidateLichess);
+$('#lichess-mapping-form').addEventListener('change', invalidateLichess);
+function displayLichess(info) {
+  lichessInfo = info; $('#lichess-consent').checked = false;
+  $('#lichess-games').innerHTML = info.games.map(g => `<label class="check-label"><input type="checkbox" data-lichess-game="${escapeHtml(g.external_id)}" checked> ${escapeHtml(g.name)} · ${catName(g.category)} · ${new Date(g.played*1000).toLocaleString('de-DE')} · ${escapeHtml(g.parsed.players[0].name)} – ${escapeHtml(g.parsed.players[1].name)} · ${resultLabel(g.parsed.games[0].score)}</label>`).join('');
+  $('#lichess-assignments').innerHTML = info.assignments.map(a => `<label>${escapeHtml(a.name)}<select data-lichess-player="${escapeHtml(a.name)}" ${a.player_id ? 'disabled' : ''}><option value="">Vereinsspieler auswählen</option>${info.players.map(p => `<option value="${p.id}" ${p.id===a.player_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></label>`).join('');
+  $('#lichess-mapping-form').hidden = false;
+}
+for (const form of ['lichess-links-form','lichess-match-form']) {
+  $('#'+form).addEventListener('input', () => { invalidateLichess(); lichessInfo = null; $('#lichess-mapping-form').hidden = true; });
+  $('#'+form).addEventListener('submit', event => {
+    event.preventDefault();
+    busy(event.submitter, async () => {
+      invalidateLichess(); const generation = lichessGeneration;
+      const request = form === 'lichess-match-form' ? {mode:'match', first:$('#lichess-first').value.trim(), second:$('#lichess-second').value.trim(), day:$('#lichess-day').value} : {links:$('#lichess-links').value};
+      const info = await api('/api/lichess/inspect', request);
+      if (generation !== lichessGeneration) return;
+      displayLichess(info);
+    });
+  });
+}
+$('#lichess-day').value = new Date().toLocaleDateString('sv-SE');
+$('#lichess-mapping-form').addEventListener('submit', event => {
+  event.preventDefault();
+  busy(event.submitter, async () => {
+    const generation = lichessGeneration;
+    const mapping = Object.fromEntries($$('[data-lichess-player]').map(el => [el.dataset.lichessPlayer, Number(el.value)]));
+    const preview = await api('/api/lichess/preview', {token: lichessInfo.token, mapping, selected: $$('[data-lichess-game]:checked').map(el => el.dataset.lichessGame), consent: $('#lichess-consent').checked});
+    if (generation !== lichessGeneration) return;
+    $('#lichess-preview').innerHTML = `<h2>${preview.count} Partien gemeinsam speichern</h2>${changesTable(preview.changes.map(c => ({...c,name:c.name+' · '+catName(c.category)})))}<p>Auch Änderungen an späteren Wertungen sind in dieser Vorschau enthalten.</p><button id="lichess-save" class="button">Import bestätigen →</button>`;
+    $('#lichess-preview').hidden = false;
+    $('#lichess-save').addEventListener('click', event => busy(event.currentTarget, async () => {
+      if (generation !== lichessGeneration) throw new Error('Angaben geändert. Bitte neue Vorschau erstellen.');
+      await api('/api/import/commit', {token:preview.token});
+      invalidateLichess(); lichessInfo = null; $('#lichess-mapping-form').hidden = true; $('#lichess-links-form').reset();
+      toast('Lichess-Partien gespeichert.'); await loadRanks(); location.hash = '#tournaments'; await navigate();
+    }));
+  });
+});

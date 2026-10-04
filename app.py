@@ -24,6 +24,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import storage
 from rating import ENGINE_VERSION
 import trf
+import lichess_import
 
 ROOT = Path(__file__).resolve().parent
 
@@ -340,6 +341,74 @@ def create_app(config=None):
         text = trf.decode(raw)
         return text, trf.parse(text)
 
+    def store_preview(payload):
+        token = secrets.token_urlsafe(32)
+        db().execute("DELETE FROM previews WHERE expires<?", (time.time(),))
+        db().execute("DELETE FROM previews WHERE owner=? AND token NOT IN (SELECT token FROM previews WHERE owner=? ORDER BY expires DESC LIMIT 4)", (g.user["id"],g.user["id"]))
+        db().execute("INSERT INTO previews VALUES(?,?,?,?,?)", (token,g.user["id"],storage.revision(db()),json.dumps(payload),time.time()+1800))
+        return token
+
+    @app.post("/api/lichess/inspect")
+    def lichess_inspect():
+        check_limit("lichess:"+str(g.user["id"]), 10)
+        data = fields()
+        items = lichess_import.fetch_match(data.get("first"),data.get("second"),data.get("day")) if data.get("mode") == "match" else lichess_import.fetch_games(data.get("links"))
+        unique = {p["name"]: p for item in items for p in item["parsed"]["players"]}
+        participants = [{"number":i+1,"name":name} for i,name in enumerate(unique)]
+        with db():
+            token = store_preview({"kind":"lichess-inspect","items":items})
+        return jsonify(token=token, games=items, assignments=storage.suggestions(db(),{"players":participants}),
+            players=[dict(r) for r in db().execute("SELECT id,name FROM players ORDER BY name")])
+
+    @app.post("/api/lichess/preview")
+    def lichess_preview():
+        check_limit("preview:"+str(g.user["id"]),60)
+        data = fields()
+        if data.get("consent") is not True:
+            raise ValueError("Vorherige Zustimmung beider Spieler für alle Partien bestätigen")
+        row = db().execute("SELECT payload FROM previews WHERE token=? AND owner=? AND expires>?", (data.get("token"),g.user["id"],time.time())).fetchone()
+        if not row:
+            raise ValueError("Partieprüfung abgelaufen. Bitte Links erneut prüfen")
+        payload = json.loads(row["payload"])
+        if payload.get("kind") != "lichess-inspect":
+            raise ValueError("Partieprüfung fehlt")
+        mapping = data.get("mapping")
+        if not isinstance(mapping,dict):
+            raise ValueError("Spieler zuordnen")
+        selected = data.get("selected")
+        if not isinstance(selected,list) or not selected or any(not isinstance(g,str) for g in selected):
+            raise ValueError("Mindestens eine Partie auswählen")
+        if not set(selected) <= {item["external_id"] for item in payload["items"]}:
+            raise ValueError("Ungültige Partieauswahl")
+        payload["items"] = [item for item in payload["items"] if item["external_id"] in selected]
+        for item in payload["items"]:
+            item["mapping"] = {}
+            for player in item["parsed"]["players"]:
+                chosen = mapping.get(player["name"])
+                if not chosen or not db().execute("SELECT id FROM players WHERE id=?",(chosen,)).fetchone():
+                    raise ValueError("Alle Lichess-Konten bestehenden Vereins-Spielern zuordnen")
+                item["mapping"][str(player["number"])] = chosen
+        db().execute("BEGIN IMMEDIATE")
+        try:
+            db().execute("SAVEPOINT simulation")
+            before = {(r["id"],cat):r for cat in ("blitz","rapid") for r in storage.ranking(db(),cat)}
+            for item in payload["items"]:
+                storage.import_tournament(db(),item,g.user["id"])
+            changes = []
+            for cat in ("blitz","rapid"):
+                for r in storage.ranking(db(),cat):
+                    old = before[(r["id"],cat)]
+                    if old["games"] != r["games"] or abs(old["rating"]-r["rating"]) > .000001:
+                        changes.append({"name":r["name"],"category":cat,"before":old["display"],"after":r["display"],"diff":r["display"]-old["display"]})
+            db().execute("ROLLBACK TO simulation")
+            db().execute("RELEASE simulation")
+            token = store_preview({"kind":"lichess-batch","items":payload["items"],"consent":True})
+            db().commit()
+        except Exception:
+            db().rollback()
+            raise
+        return jsonify(token=token,changes=changes,count=len(payload["items"]))
+
     @app.post("/api/import/inspect")
     def inspect():
         text, parsed = upload(fields())
@@ -398,7 +467,14 @@ def create_app(config=None):
                 raise ValueError("Vorschau abgelaufen oder bereits gespeichert. Bitte neu erstellen.")
             if row["revision"] != storage.revision(db()):
                 raise ValueError("Inzwischen wurden Daten geändert. Bitte die Vorschau erneut berechnen.")
-            tid = storage.import_tournament(db(), json.loads(row["payload"]), g.user["id"])
+            payload = json.loads(row["payload"])
+            if payload.get("kind") == "lichess-inspect":
+                raise ValueError("Bitte zuerst eine Wertungsvorschau erstellen")
+            if payload.get("kind") == "lichess-batch":
+                tids = [storage.import_tournament(db(), item, g.user["id"]) for item in payload["items"]]
+                tid = tids[0]
+            else:
+                tid = storage.import_tournament(db(), payload, g.user["id"])
             db().execute("DELETE FROM previews WHERE token=?", (token,))
             storage.bump(db())
             storage.audit(db(), g.user["id"], "import", f"Turnier {tid} importiert")
@@ -517,7 +593,7 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
