@@ -198,6 +198,79 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.client.get(f'/api/tournaments/{tid}').status_code,200)
         self.assertEqual(len(self.client.get('/api/tournaments').json['tournaments']),2)
 
+    def test_director_can_still_import_trf(self):
+        self.post('/api/users',{'username':'leader','password':'long-password-for-test','role':'director'})
+        client=self.app.test_client();csrf=self.login('leader',client)
+        preview=self.post('/api/import/preview',self.payload(),client,csrf)
+        self.assertEqual(preview.status_code,200,preview.json)
+        commit=self.post('/api/import/commit',{'token':preview.json['token']},client,csrf)
+        self.assertEqual(commit.status_code,200,commit.json)
+
+    def test_member_code_submission_and_director_approval(self):
+        from unittest.mock import patch
+        import lichess_import
+        self.commit(self.payload())
+        invite=self.post('/api/invitations',{}).json['code']
+        member=self.app.test_client()
+        registration={'code':invite,'username':'member','password':'long-password-for-test','role':'admin'}
+        self.assertEqual(self.post('/api/register',registration,member).status_code,200)
+        self.assertEqual(self.post('/api/register',{**registration,'username':'second'},member).status_code,400)
+        csrf=self.login('member',member)
+        self.assertEqual(member.get('/api/me').json['user']['role'],'member')
+        for path in ['/api/import/inspect','/api/import/preview','/api/import/commit','/api/lichess/inspect','/api/lichess/preview','/api/invitations']:
+            self.assertEqual(self.post(path,{},member,csrf).status_code,403,path)
+        players=self.client.get('/api/rankings').json['players'][:2]
+        for player,name in zip(players,['Anna','Ben']):
+            self.assertEqual(self.post(f"/api/players/{player['id']}/lichess",{'username':name}).status_code,200)
+        data={'mode':'match','first_player':players[0]['id'],'second_player':players[1]['id'],'day':'2025-09-17','consent':True}
+        before=[(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
+        submitted=self.post('/api/submissions',data,member,csrf)
+        self.assertEqual(submitted.status_code,200,submitted.json)
+        sid=submitted.json['id']
+        self.assertEqual(self.post('/api/submissions',data,member,csrf).status_code,400)
+        self.assertEqual([(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']],before)
+        self.assertNotIn('first',member.get('/api/submissions').json['submissions'][0]['payload'])
+        item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+        with patch('lichess_import.fetch_match',return_value=[item]):
+            checked=self.post('/api/lichess/inspect',{'submission_id':sid})
+        self.assertEqual(checked.status_code,200,checked.json)
+        preview=self.post('/api/lichess/preview',{'token':checked.json['token'],'consent':True,'selected':['abcdefgh'],'mapping':{'Lichess: Anna':players[0]['id'],'Lichess: Ben':players[1]['id']}})
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)
+        self.assertEqual(member.get('/api/submissions').json['submissions'][0]['status'],'approved')
+        self.assertTrue(all(not t['name'].startswith('Lichess') for t in member.get('/api/tournaments').json['tournaments']))
+        second=self.app.test_client()
+        self.post('/api/users',{'username':'other','password':'long-password-for-test','role':'member'})
+        self.login('other',second)
+        self.assertEqual(second.get('/api/submissions').json['submissions'],[])
+
+    def test_member_role_migration_preserves_accounts_and_references(self):
+        path=str(Path(self.tmp.name)/'legacy.sqlite')
+        with storage.open_db(path) as db:
+            db.executescript(storage.SCHEMA.replace("'admin','director','member'","'admin','director'"))
+            db.execute("INSERT INTO users VALUES(7,'oldadmin','hash','admin',1,1)")
+            db.execute("INSERT INTO sessions VALUES('session',7,'csrf',9999999999)")
+            payload={'name':'Vereinsabend','category':'blitz','round_dates':['2025-09-16'],'mapping':{},'text':fixture(),'filename':'old.trf','parsed':trf.parse(fixture())}
+            storage.import_tournament(db,payload,7)
+        storage.initialize(path)
+        with storage.open_db(path) as db:
+            self.assertEqual(db.execute('SELECT user_id FROM sessions').fetchone()[0],7)
+            self.assertEqual(db.execute('SELECT owner FROM tournaments').fetchone()[0],7)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM games').fetchone()[0],2)
+            db.execute("INSERT INTO users VALUES(8,'newmember','hash','member',1,1)")
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+        self.assertTrue(list((Path(path).parent/'backups').glob('before-members-*.sqlite')))
+
+    def test_registration_expiry_and_failed_registration_preserve_code(self):
+        code=self.post('/api/invitations',{}).json['code']
+        client=self.app.test_client()
+        body={'code':code,'username':'admin','password':'long-password-for-test'}
+        self.assertEqual(self.post('/api/register',body,client).status_code,409)
+        with storage.open_db(self.path) as db:
+            self.assertIsNone(db.execute('SELECT used_by FROM invitations').fetchone()[0])
+            db.execute('UPDATE invitations SET expires=1')
+        self.assertEqual(self.post('/api/register',{**body,'username':'fresh'},client).status_code,400)
+
     def test_preview_does_not_write_players_or_ratings(self):
         p=self.preview(self.payload())
         self.assertEqual(len(p['tournament']['games']),2)

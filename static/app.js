@@ -2,6 +2,7 @@
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const roleName = role => ({admin:'Administrator',director:'Turnierleiter',member:'Vereinsmitglied'}[role] || role);
 const catName = cat => cat === 'blitz' ? 'Blitz' : 'Schnellschach';
 const formatDate = date => date ? new Date(date + 'T12:00:00Z').toLocaleDateString('de-DE') : '–';
 const signed = n => n > 0 ? '+' + n : String(n);
@@ -43,13 +44,14 @@ function empty(title, text, action = '') {
 }
 function refreshAuth() {
   $$('.auth-only').forEach(el => { el.hidden = !user; });
+  $('.nav [data-page="submissions"]').textContent = ['director','admin'].includes(user?.role) ? 'Einreichungen' : 'Einreichen';
   $$('.director-only').forEach(el => { el.hidden = !['director', 'admin'].includes(user?.role); });
   $$('.admin-only').forEach(el => { el.hidden = user?.role !== 'admin'; });
   $('#login-button').textContent = user ? user.username : needsSetup ? 'App einrichten' : 'Anmelden';
 }
 function openAuth() {
   if (user) {
-    $('#account-name').textContent = `${user.username} · ${user.role === 'admin' ? 'Administrator' : 'Turnierleiter'}`;
+    $('#account-name').textContent = `${user.username} · ${roleName(user.role)}`;
     $('#account-dialog').showModal();
     return;
   }
@@ -273,8 +275,9 @@ $('#import-form').addEventListener('submit', event => {
 });
 
 async function loadAdmin() {
-  const [accounts, audit] = await Promise.all([api('/api/users'), api('/api/audit')]);
-  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${u.role === 'admin' ? 'Administrator' : 'Turnierleiter'} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
+  const [accounts, audit, settings] = await Promise.all([api('/api/users'), api('/api/audit'), api('/api/settings')]);
+  $('#request-email').value = settings.request_email;
+  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${roleName(u.role)} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
   $('#audit-list').innerHTML = audit.events.map(e => `<div class="audit-item">${escapeHtml(new Date(e.created * 1000).toLocaleString('de-DE'))} · ${escapeHtml(e.username)} · ${escapeHtml(e.detail)}</div>`).join('');
   $$('[data-toggle-user]').forEach(button => button.addEventListener('click', () => busy(button, async () => {
     await api('/api/users/' + button.dataset.toggleUser, {active: button.dataset.active !== '1'}); await loadAdmin();
@@ -298,7 +301,7 @@ $('#reset-form').addEventListener('submit', event => {
 });
 async function navigate() {
   let page = location.hash.slice(1) || 'rankings';
-  if (!['rankings','tournaments','import','help','admin'].includes(page)) page = 'rankings';
+  if (!['rankings','tournaments','import','submissions','help','admin'].includes(page)) page = 'rankings';
   if ((page === 'import' && !['director', 'admin'].includes(user?.role)) || (page === 'admin' && user?.role !== 'admin')) { page = 'rankings'; location.hash = '#rankings'; }
   $$('.page').forEach(el => { el.hidden = el.id !== 'page-' + page; });
   $$('.nav a').forEach(el => { el.classList.toggle('active', el.dataset.page === page); if (el.dataset.page === page) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
@@ -306,6 +309,7 @@ async function navigate() {
     if (page === 'rankings') await loadRanks();
     if (page === 'tournaments') await loadTournaments();
     if (page === 'admin') await loadAdmin();
+    if (page === 'submissions') await loadSubmissions();
   } catch (error) { toast(error.message, true); }
 }
 window.addEventListener('hashchange', navigate);
@@ -361,3 +365,47 @@ $('#lichess-mapping-form').addEventListener('submit', event => {
     }));
   });
 });
+
+let submissionPlayers = [];
+async function loadSubmissions() {
+  const [people,data] = await Promise.all([api('/api/submission-players'),api('/api/submissions')]);
+  submissionPlayers=people.players;
+  const options='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}" ${p.available ? '' : 'disabled'}>${escapeHtml(p.name)}${p.available ? '' : ' · Lichess-Name fehlt'}</option>`).join('');
+  for (const id of ['submission-first','submission-second']) { const value=$('#'+id).value; $('#'+id).innerHTML=options; $('#'+id).value=value; }
+  $('#account-player').innerHTML='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.username ? ' · '+escapeHtml(p.username) : ''}</option>`).join('');
+  const names = Object.fromEntries(people.players.map(p => [p.id,p.name]));
+  const review = ['admin','director'].includes(user?.role);
+  $('#submission-list').innerHTML='<h2>'+ (review ? 'Einreichungen zur Prüfung' : 'Deine Einreichungen')+'</h2>'+ (data.submissions.length ? data.submissions.map(s => `<article class="card"><span class="badge">${({pending:'Wartet auf Prüfung',approved:'Genehmigt',rejected:'Abgelehnt'})[s.status]}</span><h3>${escapeHtml(names[s.payload.first_player] || 'Spieler')} – ${escapeHtml(names[s.payload.second_player] || 'Spieler')}</h3><p>${formatDate(s.payload.day)}${review ? ' · Eingereicht von '+escapeHtml(s.username) : ''}</p>${s.response ? '<p class="note">'+escapeHtml(s.response)+'</p>' : ''}${review && s.status==='pending' ? `<div class="user-actions"><button class="button" data-review-submission="${s.id}">Partien prüfen →</button><button class="button secondary" data-reject-submission="${s.id}">Ablehnen</button></div>` : ''}</article>`).join('') : '<p class="muted">Noch keine Einreichungen.</p>');
+  $('#submission-day').value ||= new Date().toLocaleDateString('sv-SE');
+}
+$('#submission-form').addEventListener('submit', event => {
+  event.preventDefault(); busy(event.submitter,async () => {
+    await api('/api/submissions',{mode:'match',first_player:Number($('#submission-first').value),second_player:Number($('#submission-second').value),day:$('#submission-day').value,consent:$('#submission-consent').checked});
+    $('#submission-consent').checked=false; toast('Zur Prüfung bei der Turnierleitung eingereicht.'); await loadSubmissions(); $('#submission-list').scrollIntoView({behavior:'smooth',block:'start'});
+  });
+});
+$('#lichess-account-form').addEventListener('submit', event => {
+  event.preventDefault(); busy(event.submitter,async () => { await api('/api/players/'+Number($('#account-player').value)+'/lichess',{username:$('#account-lichess-name').value.trim()}); event.target.reset(); toast('Lichess-Konto hinterlegt.'); await loadSubmissions(); });
+});
+$('#request-email-form').addEventListener('submit', event => {
+  event.preventDefault(); busy(event.submitter,async () => { await api('/api/settings',{request_email:$('#request-email').value.trim()}); toast('Adresse für Login-Anfragen gespeichert.'); });
+});
+$('#submission-list').addEventListener('click', event => {
+  const review=event.target.closest('[data-review-submission]');
+  const reject=event.target.closest('[data-reject-submission]');
+  if (review) busy(review,async () => {
+    const info=await api('/api/lichess/inspect',{submission_id:Number(review.dataset.reviewSubmission)});
+    invalidateLichess(); location.hash='#import'; await navigate(); displayLichess(info);
+  });
+  if (reject) busy(reject,async () => {
+    const reason=window.prompt('Begründung für die Ablehnung:');
+    if (!reason) return;
+    await api('/api/submissions/'+Number(reject.dataset.rejectSubmission)+'/reject',{reason}); await loadSubmissions(); toast('Einreichung abgelehnt.');
+  });
+});
+
+$('#create-invitation').addEventListener('click',event => busy(event.currentTarget,async () => {
+  const invite=await api('/api/invitations',{});$('#invitation-code').value=invite.code;$('#invitation-result').hidden=false;
+  $('#invitation-expiry').textContent='Gültig bis '+new Date(invite.expires*1000).toLocaleString('de-DE')+' · einmalig';
+  $('#invitation-result').scrollIntoView({behavior:'smooth',block:'start'});
+}));

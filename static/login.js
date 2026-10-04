@@ -10,6 +10,10 @@ async function initialize() {
     if (!response.ok) throw new Error('Verbindung fehlgeschlagen. Bitte neu laden.');
     const me = await response.json();
     if (me.user) { location.reload(); return; }
+    if (me.request_email) {
+      document.querySelector('#request-access-link').href = 'mailto:'+me.request_email+'?subject='+encodeURIComponent('Mitgliederzugang · SK1912 Vereinswertung')+'&body='+encodeURIComponent('Hallo,\n\nich möchte einen Mitgliederzugang zur Vereinswertung anfragen.\n\nMein Name:\nGewünschter Benutzername:\nMein Lichess-Name:\n\nBitte kein Passwort per E-Mail senden.\n');
+      document.querySelector('#request-access').hidden = false;
+    }
     setup = me.needs_setup;
     document.querySelector('#bootstrap-label').hidden = !setup;
     form.elements.token.required = setup;
@@ -32,3 +36,21 @@ form.addEventListener('submit', async event => {
   finally { submit.disabled = false; }
 });
 initialize();
+
+const registration=document.querySelector('#member-register');
+registration.addEventListener('submit',async event => {
+  event.preventDefault();const button=event.submitter;button.disabled=true;
+  const message=document.querySelector('#register-message');message.hidden=false;
+  try {
+    const data=Object.fromEntries(new FormData(registration));
+    if (data.password!==data.repeat) throw new Error('Die Passwörter stimmen nicht überein.');
+    delete data.repeat;
+    const response=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const result=await response.json();
+    if (!response.ok) throw new Error(result.error || 'Registrierung fehlgeschlagen');
+    form.elements.username.value=data.username;registration.reset();
+    message.className='success';message.textContent='Zugang angelegt. Du kannst dich oben mit deinem Benutzernamen und Passwort anmelden.';
+    form.scrollIntoView({behavior:'smooth',block:'start'});
+  } catch(e) {message.className='error';message.textContent=e.message;}
+  finally {button.disabled=false;}
+});

@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 INSERT OR IGNORE INTO meta VALUES('revision', 0);
 CREATE TABLE IF NOT EXISTS users(
  id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
- password TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','director')),
+ password TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','director','member')),
  active INTEGER NOT NULL DEFAULT 1, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions(
  token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
@@ -54,6 +54,17 @@ CREATE TABLE IF NOT EXISTS audit(
  action TEXT NOT NULL, detail TEXT NOT NULL, created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS history_player ON history(player_id,game_id);
 CREATE INDEX IF NOT EXISTS games_tournament ON games(tournament_id,round,id);
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS submissions(
+ id INTEGER PRIMARY KEY, owner INTEGER NOT NULL REFERENCES users(id), created REAL NOT NULL,
+ payload TEXT NOT NULL, note TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending'
+ CHECK(status IN ('pending','approved','rejected')), reviewer INTEGER REFERENCES users(id),
+ reviewed REAL, response TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS lichess_accounts(
+ player_id INTEGER PRIMARY KEY REFERENCES players(id), username TEXT NOT NULL UNIQUE COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS invitations(
+ id INTEGER PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id),
+ created REAL NOT NULL, expires REAL NOT NULL, used_by INTEGER REFERENCES users(id), used REAL);
 """
 
 
@@ -62,6 +73,7 @@ def connect(path):
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA busy_timeout=30000")
+    db.execute("PRAGMA temp_store=MEMORY")
     return db
 
 
@@ -70,6 +82,31 @@ def initialize(path):
     with open_db(path) as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
+        user_schema = db.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
+        if "'member'" not in user_schema:
+            # Preserve IDs and all referencing records; snapshot before rebuilding the role constraint.
+            db.commit()
+            backup = Path(path).parent / 'backups' / ('before-members-' + str(time.time_ns()) + '.sqlite')
+            backup.parent.mkdir(exist_ok=True)
+            with closing(sqlite3.connect(backup)) as snapshot:
+                db.backup(snapshot)
+            db.execute('PRAGMA foreign_keys=OFF')
+            try:
+                db.execute('BEGIN IMMEDIATE')
+                db.execute("""CREATE TABLE users_new(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    password TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','director','member')),
+                    active INTEGER NOT NULL DEFAULT 1, created REAL NOT NULL)""")
+                db.execute('INSERT INTO users_new SELECT * FROM users')
+                db.execute('DROP TABLE users')
+                db.execute('ALTER TABLE users_new RENAME TO users')
+                if db.execute('PRAGMA foreign_key_check').fetchone():
+                    raise ValueError('Zugangsmigration konnte nicht sicher abgeschlossen werden')
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.execute('PRAGMA foreign_keys=ON')
         if 'sequence' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
             db.execute('ALTER TABLE tournaments ADD COLUMN sequence INTEGER')
         if 'hidden' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
@@ -78,6 +115,8 @@ def initialize(path):
             db.execute("ALTER TABLE tournaments ADD COLUMN source TEXT NOT NULL DEFAULT 'trf'")
             db.execute("UPDATE tournaments SET source='lichess' WHERE length(original)=16 AND original='lichess:' || substr(filename,1,8) AND filename=substr(original,9) || '.lichess'")
         db.execute('UPDATE tournaments SET sequence=id WHERE sequence IS NULL')
+        for alias in db.execute("SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"):
+            db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(alias['player_id'],alias['name'][9:]))
 
 
 @contextmanager
@@ -106,6 +145,9 @@ def bump(db):
 def suggestions(db, parsed):
     existing = {r["name_key"]: dict(r) for r in db.execute(
         "SELECT a.name_key,a.player_id,p.name FROM aliases a JOIN players p ON p.id=a.player_id")}
+    for account in db.execute('SELECT a.player_id,a.username,p.name FROM lichess_accounts a JOIN players p ON p.id=a.player_id'):
+        key=normalize('Lichess: '+account['username'])
+        existing.setdefault(key,{'name_key':key,'player_id':account['player_id'],'name':account['name']})
     result = []
     for p in parsed["players"]:
         key = normalize(p["name"])
@@ -170,6 +212,8 @@ def import_tournament(db, payload, owner):
             raise ValueError("Zwei Turnierteilnehmer dürfen nicht demselben Spieler zugeordnet sein")
         used.add(chosen)
         ids[p["number"]] = chosen
+        if payload.get('external_id'):
+            db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(chosen,p['name'][9:]))
         db.execute("INSERT OR IGNORE INTO aliases(name_key,name,player_id) VALUES(?,?,?)", (key, p["name"], chosen))
     games = [{**g, "white": ids[g["white"]], "black": ids[g["black"]]} for g in payload["parsed"]["games"]]
     dates = payload["round_dates"]

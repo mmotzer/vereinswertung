@@ -25,6 +25,7 @@ import storage
 from rating import ENGINE_VERSION
 import trf
 import lichess_import
+import member_features
 
 ROOT = Path(__file__).resolve().parent
 
@@ -45,6 +46,7 @@ def create_app(config=None):
                       BOOTSTRAP_TOKEN=os.environ.get("BOOTSTRAP_TOKEN", ""),
                       SECURE_COOKIE=os.environ.get("SECURE_COOKIE", "true").lower() == "true",
                       PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN", "").rstrip("/"),
+                      REQUEST_EMAIL=os.environ.get("REQUEST_EMAIL", ""),
                       TRUSTED_PROXY_IPS=os.environ.get("TRUSTED_PROXY_IPS", ""),
                       MAX_CONTENT_LENGTH=3 * 1024 * 1024)
     if config:
@@ -70,6 +72,15 @@ def create_app(config=None):
             raise TooManyRequests("Anmeldung ausgelastet. Bitte kurz warten und erneut versuchen.")
         try:
             return check_password_hash(candidate, password)
+        finally:
+            password_slots.release()
+
+    def hash_password(password):
+        if not password_slots.acquire(blocking=False):
+            from werkzeug.exceptions import TooManyRequests
+            raise TooManyRequests("Registrierung ausgelastet. Bitte kurz warten.")
+        try:
+            return generate_password_hash(password)
         finally:
             password_slots.release()
 
@@ -110,7 +121,7 @@ def create_app(config=None):
                 valid = parsed.scheme in ("http", "https") and parsed.netloc == request.host
             if not valid:
                 return jsonify(error="Anfrage stammt nicht von der App-Adresse"), 403
-            public = request.path in ("/api/login", "/api/setup")
+            public = request.path in ("/api/login", "/api/setup", "/api/register")
             if not public:
                 if not g.user:
                     return jsonify(error="Bitte anmelden"), 401
@@ -206,6 +217,7 @@ def create_app(config=None):
     @app.get("/api/me")
     def me():
         return jsonify(user=g.user, csrf=g.session["csrf"] if g.session else None,
+                       request_email=member_features.request_email(db(),app.config["REQUEST_EMAIL"]),
                        needs_setup=not bool(db().execute("SELECT 1 FROM users LIMIT 1").fetchone()))
 
     @app.post("/api/setup")
@@ -372,12 +384,18 @@ def create_app(config=None):
         director()
         check_limit("lichess:"+str(g.user["id"]), 10)
         data = fields()
+        submission_id = data.get("submission_id")
+        if submission_id is not None:
+            row = db().execute("SELECT payload,status FROM submissions WHERE id=?",(submission_id,)).fetchone()
+            if not row or row["status"] != "pending":
+                raise ValueError("Einreichung ist nicht mehr offen")
+            data = json.loads(row["payload"])
         items = lichess_import.fetch_match(data.get("first"),data.get("second"),data.get("day")) if data.get("mode") == "match" else lichess_import.fetch_games(data.get("links"))
         unique = {p["name"]: p for item in items for p in item["parsed"]["players"]}
         participants = [{"number":i+1,"name":name} for i,name in enumerate(unique)]
         with db():
-            token = store_preview({"kind":"lichess-inspect","items":items})
-        return jsonify(token=token, games=items, assignments=storage.suggestions(db(),{"players":participants}),
+            token = store_preview({"kind":"lichess-inspect","items":items,"submission_id":submission_id})
+        return jsonify(token=token, submission_id=submission_id, games=items, assignments=storage.suggestions(db(),{"players":participants}),
             players=[dict(r) for r in db().execute("SELECT id,name FROM players ORDER BY name")])
 
     @app.post("/api/lichess/preview")
@@ -423,7 +441,7 @@ def create_app(config=None):
                         changes.append({"name":r["name"],"category":cat,"before":old["display"],"after":r["display"],"diff":r["display"]-old["display"]})
             db().execute("ROLLBACK TO simulation")
             db().execute("RELEASE simulation")
-            token = store_preview({"kind":"lichess-batch","items":payload["items"],"consent":True})
+            token = store_preview({"kind":"lichess-batch","items":payload["items"],"consent":True,"submission_id":payload.get("submission_id")})
             db().commit()
         except Exception:
             db().rollback()
@@ -496,8 +514,16 @@ def create_app(config=None):
                 raise ValueError("Bitte zuerst eine Wertungsvorschau erstellen")
             if payload.get("kind") == "lichess-batch":
                 director()
+                sid = payload.get("submission_id")
+                if sid is not None:
+                    submission = db().execute("SELECT status FROM submissions WHERE id=?",(sid,)).fetchone()
+                    if not submission or submission["status"] != "pending":
+                        raise ValueError("Einreichung wurde bereits bearbeitet. Bitte neu prüfen")
                 tids = [storage.import_tournament(db(), item, g.user["id"]) for item in payload["items"]]
                 tid = tids[0]
+                if sid is not None:
+                    db().execute("UPDATE submissions SET status='approved',reviewer=?,reviewed=?,response=? WHERE id=?",(g.user["id"],time.time(),f"{len(tids)} ausgewählte Partien genehmigt und gewertet",sid))
+                    storage.audit(db(),g.user["id"],"approve_submission",f"Einreichung {sid}; Importe {tids}; Zustimmung bestätigt")
             else:
                 tid = storage.import_tournament(db(), payload, g.user["id"])
             db().execute("DELETE FROM previews WHERE token=?", (token,))
@@ -557,7 +583,7 @@ def create_app(config=None):
         data = fields()
         username, password = credentials(data)
         role = data.get("role", "director")
-        if role not in ("admin", "director"):
+        if role not in ("admin", "director", "member"):
             raise ValueError("Ungültige Rolle")
         with db():
             uid = db().execute("INSERT INTO users(username,password,role,created) VALUES(?,?,?,?)",
@@ -617,10 +643,11 @@ def create_app(config=None):
                 z.write(path, path.relative_to(ROOT))
         return output.getvalue()
 
+    member_features.register(app,db,fields,admin,director,is_director,check_limit,credentials,client_address,hash_password)
     return app
 
 
-SOURCE_FILES = ["app.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
