@@ -16,7 +16,7 @@ function render() {
   for (const cat of selected === 'both' ? ['blitz','rapid'] : [selected]) {
     const players = lists[cat].players.filter(p => p.games || document.querySelector('#include-new').checked);
     const section = element('section', '', 'sheet'), header = element('header','');
-    header.append(element('h1', document.querySelector('#club-title').value.trim() || 'Vereinswertung'),
+    header.append(element('h1', document.querySelector('#club-title').value.trim() || 'SK1912 Ludwigshafen'),
       element('h2', cat === 'blitz' ? 'Blitz · Vereinsrangliste' : 'Schnellschach · Vereinsrangliste'),
       element('p', 'Stand: ' + loadedAt.toLocaleString('de-DE') + ' · ' + players.length + ' Spieler'));
     section.append(header);

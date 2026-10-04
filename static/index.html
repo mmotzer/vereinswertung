@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#193d35">
   <meta name="description" content="Die vereinsinterne Glicko-2-Rangliste für Blitz und Schnellschach.">
-  <title>Vereinswertung · Blitz & Schnellschach</title>
+  <title>SK1912 Ludwigshafen · Vereinswertung</title>
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="stylesheet" href="/static/style.css">
@@ -14,7 +14,7 @@
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
   <header class="header">
-    <a class="brand" href="#rankings"><span class="brand-icon" aria-hidden="true">♞</span><span>Vereinswertung<small>Unser Schach. Unsere Zahlen.</small></span></a>
+    <a class="brand" href="#rankings"><span class="brand-icon" aria-hidden="true">♞</span><span>SK1912 Ludwigshafen<small>Unsere Vereinswertung · Blitz & Schnellschach</small></span></a>
     <button id="login-button" class="button secondary small">Anmelden</button>
   </header>
   <div class="shell">
@@ -59,7 +59,7 @@
         <div id="user-list" class="card"></div><div class="card"><h2>Datensicherung</h2><p>Automatische tägliche Sicherungen liegen im Datenordner des NAS. Zusätzlich kannst du eine aktuelle Sicherung herunterladen.</p><a class="button secondary" href="/api/backup">Datenbank sichern ↓</a></div><div class="card"><h2>Aktivitätsprotokoll</h2><div id="audit-list"></div></div>
       </section>
     </main>
-    <footer><span>Vereinswertung · Blitz & Schnellschach</span><span>AGPL-3.0</span></footer>
+    <footer><span>SK1912 Ludwigshafen · Vereinswertung</span><span>AGPL-3.0</span></footer>
   </div>
   <div id="toast" role="status" hidden></div>
   <dialog id="auth-dialog"><form id="auth-form"><button class="dialog-close" type="button" data-close="auth-dialog" aria-label="Schließen">×</button><div class="eyebrow" id="auth-eyebrow">TURNIERLEITER</div><h2 id="auth-title">Willkommen zurück.</h2><p id="auth-description" class="muted">Melde dich an, um ein Turnier zu importieren.</p><label id="setup-token-label" hidden>Einrichtungsschlüssel<input id="setup-token" type="password" autocomplete="off"></label><label>Benutzername<input id="auth-username" minlength="3" maxlength="50" autocomplete="username" required></label><label>Passwort<input id="auth-password" type="password" maxlength="200" autocomplete="current-password" required></label><p id="auth-error" class="error" role="alert" hidden></p><button id="auth-submit" class="button" type="submit">Anmelden →</button></form></dialog>
