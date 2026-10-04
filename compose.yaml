@@ -1,0 +1,39 @@
+services:
+  app:
+    image: vereinswertung:1.0
+    restart: unless-stopped
+    environment:
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?Bitte Einrichtungsschlüssel setzen}
+      SECURE_COOKIE: "true"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      DATABASE: /data/club.sqlite
+      HOST: 0.0.0.0
+      PORT: "8080"
+    volumes:
+      - club-data:/data
+    networks:
+      club:
+        aliases:
+          - vereinswertung
+    # Nur vom NAS selbst erreichbar. Der öffentliche Zugang läuft über den Tunnel.
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  club-data:
+    name: vereinswertung-data
+networks:
+  club:
+    name: vereinswertung-net

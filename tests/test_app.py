@@ -1,0 +1,232 @@
+import base64
+import io
+import json
+import sqlite3
+import tempfile
+import unittest
+import zipfile
+from contextlib import closing
+from pathlib import Path
+
+from app import create_app, backup_database
+import storage
+import trf
+
+
+def player_line(number,name,rounds,rating=2200):
+    line=list(' '*91)
+    line[0:3]='001';line[4:8]=f'{number:4d}';line[9]='M'
+    line[14:47]=f'{name:33}'[:33];line[48:52]=f'{rating:4d}'
+    return ''.join(line)+''.join(f'{opp:4d} {color} {result}  ' for opp,color,result in rounds)
+
+
+def fixture(day='2025-09-16',draw=False):
+    return '\n'.join(['012 Vereinsabend','042 '+day,'052 '+day,
+       player_line(1,'Alpha, Anna',[(3,'w','=' if draw else '1')],2500),
+       player_line(2,'Beta, Ben',[(4,'b','1')],1000),
+       player_line(3,'Gamma, Greta',[(1,'b','=' if draw else '0')],800),
+       player_line(4,'Delta, David',[(2,'w','0')],2300)])
+
+
+class ParserTests(unittest.TestCase):
+    def test_sample_shape(self):
+        parsed=trf.parse(fixture())
+        self.assertEqual(len(parsed['players']),4)
+        self.assertEqual(len(parsed['games']),2)
+        self.assertEqual(parsed['games'][1]['white'],4)
+        self.assertEqual(parsed['games'][1]['score'],0)
+
+    def test_row_order_is_irrelevant(self):
+        lines=fixture().splitlines()
+        self.assertEqual(trf.parse(fixture())['games'],trf.parse('\n'.join(lines[:3]+list(reversed(lines[3:]))))['games'])
+
+    def test_two_rounds_and_byes(self):
+        text='\n'.join([player_line(1,'One',[(2,'w','1'),(0,'-','U')]),
+                        player_line(2,'Two',[(1,'b','0'),(3,'b','=')]),
+                        player_line(3,'Three',[(0,'-','U'),(2,'w','=')])])
+        p=trf.parse(text)
+        self.assertEqual(p['rounds'],2)
+        self.assertEqual([g['round'] for g in p['games']],[1,2])
+        self.assertEqual(len(p['skipped']),2)
+
+    def test_forfeit_not_rated(self):
+        text=fixture()+'\n'+player_line(5,'Five',[(6,'w','+')])+'\n'+player_line(6,'Six',[(5,'b','-')])
+        p=trf.parse(text)
+        self.assertEqual(len(p['games']),2)
+        self.assertEqual(len(p['skipped']),1)
+
+    def test_bad_result_and_color_rejected(self):
+        for text in [fixture().replace('   3 w 1','   3 w 0'),
+                     fixture().replace('   3 w 1','   3 b 1'),
+                     fixture().replace('   3 w 1','   3 w Q'),
+                     fixture().replace('   3 w 1','   3 w  '),
+                     fixture().replace('   3 w 1','   9 w 1')]:
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):trf.parse(text)
+
+    def test_encoding(self):
+        text=fixture().replace('Anna','Änna')
+        self.assertEqual(trf.decode(text.encode('cp1252')),text)
+        self.assertEqual(trf.decode(text.encode('utf-8-sig')),text)
+
+
+class AppTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory()
+        self.path=str(Path(self.tmp.name)/'club.sqlite')
+        self.app=create_app({'TESTING':True,'DATABASE':self.path,'BOOTSTRAP_TOKEN':'test-bootstrap-key-long-enough-123',
+                             'SECURE_COOKIE':False,'PUBLIC_ORIGIN':''})
+        self.client=self.app.test_client()
+        self.csrf=''
+        r=self.post('/api/setup',{'token':'test-bootstrap-key-long-enough-123','username':'admin','password':'long-password-for-test'})
+        self.assertEqual(r.status_code,200,r.json)
+        self.login('admin')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def post(self,path,data,client=None,csrf=None):
+        return (client or self.client).post(path,json=data,headers={'Origin':'http://localhost','X-CSRF-Token':csrf if csrf is not None else self.csrf})
+
+    def login(self,username,client=None):
+        r=self.post('/api/login',{'username':username,'password':'long-password-for-test'},client=client)
+        self.assertEqual(r.status_code,200,r.json)
+        if client is None:self.csrf=r.json['csrf']
+        return r.json['csrf']
+
+    def payload(self,text=None,category='blitz',day='2025-09-16'):
+        return {'content':base64.b64encode((text or fixture(day)).encode()).decode(), 'filename':'test.trf',
+                'name':'Vereinsabend','category':category,'round_dates':[day],'mapping':{}}
+
+    def preview(self,payload):
+        r=self.post('/api/import/preview',payload)
+        self.assertEqual(r.status_code,200,r.json)
+        return r.json
+
+    def commit(self,payload):
+        p=self.preview(payload)
+        r=self.post('/api/import/commit',{'token':p['token']})
+        self.assertEqual(r.status_code,200,r.json)
+        return r.json['tournament_id']
+
+    def test_preview_does_not_write_players_or_ratings(self):
+        p=self.preview(self.payload())
+        self.assertEqual(len(p['tournament']['games']),2)
+        self.assertTrue(all(c['before']==1500 for c in p['tournament']['changes']))
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],0)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM tournaments').fetchone()[0],0)
+        self.assertEqual(self.client.get('/api/rankings').json['players'],[])
+
+    def test_commit_separation_history_and_duplicate(self):
+        tid=self.commit(self.payload())
+        blitz=self.client.get('/api/rankings?category=blitz').json['players']
+        rapid=self.client.get('/api/rankings?category=rapid').json['players']
+        self.assertEqual(len(blitz),4)
+        self.assertEqual(sum(p['games'] for p in blitz),4)
+        self.assertTrue(all(p['display']==1500 and p['games']==0 for p in rapid))
+        self.assertEqual(len(self.client.get(f'/api/tournaments/{tid}').json['changes']),4)
+        self.assertEqual(len(self.client.get(f"/api/players/{blitz[0]['id']}").json['history']),1)
+        r=self.post('/api/import/preview',self.payload())
+        self.assertEqual(r.status_code,400)
+        with storage.open_db(self.path) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
+
+    def test_preview_cannot_be_reused_or_used_by_other_user(self):
+        p=self.preview(self.payload())
+        self.post('/api/import/commit',{'token':p['token']})
+        self.assertEqual(self.post('/api/import/commit',{'token':p['token']}).status_code,400)
+
+    def test_stale_preview_rejected(self):
+        a=self.preview(self.payload())
+        self.commit(self.payload(category='rapid'))
+        self.assertEqual(self.post('/api/import/commit',{'token':a['token']}).status_code,400)
+
+    def test_undo_replay_and_reimport(self):
+        tid=self.commit(self.payload())
+        self.commit(self.payload(fixture('2025-10-16',draw=True),day='2025-10-16'))
+        before=self.client.get('/api/rankings').json['players']
+        r=self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'})
+        self.assertEqual(r.status_code,200,r.json)
+        after=self.client.get('/api/rankings').json['players']
+        self.assertTrue(all(p['games']==1 for p in after))
+        self.assertNotEqual([p['display'] for p in before],[p['display'] for p in after])
+        self.commit(self.payload())
+        final=self.client.get('/api/rankings').json['players']
+        self.assertEqual({p['id']:p['rating'] for p in final},{p['id']:p['rating'] for p in before})
+
+    def test_out_of_order_matches_chronological_replay(self):
+        later=self.payload(fixture('2025-10-16',draw=True),day='2025-10-16')
+        tid=self.commit(later)
+        self.commit(self.payload())
+        expected={p['id']:p['rating'] for p in self.client.get('/api/rankings').json['players']}
+        self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'})
+        self.commit(later)
+        self.assertEqual(expected,{p['id']:p['rating'] for p in self.client.get('/api/rankings').json['players']})
+
+    def test_rights_csrf_and_disabled_accounts(self):
+        anonymous=self.app.test_client()
+        self.assertEqual(anonymous.get('/api/rankings').status_code,200)
+        self.assertEqual(self.post('/api/import/inspect',self.payload(),client=anonymous).status_code,401)
+        self.assertEqual(self.post('/api/users',{},csrf='wrong').status_code,403)
+        self.assertEqual(self.client.post('/api/users',json={},headers={'Origin':'https://evil.test','X-CSRF-Token':self.csrf}).status_code,403)
+        self.post('/api/users',{'username':'director','password':'long-password-for-test','role':'director'})
+        other=self.app.test_client(); other_csrf=self.login('director',other)
+        self.assertEqual(other.get('/api/users').status_code,403)
+        tid=self.commit(self.payload())
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'},client=other,csrf=other_csrf).status_code,403)
+        p=self.preview(self.payload(category='rapid'))
+        self.assertEqual(self.post('/api/import/commit',{'token':p['token']},client=other,csrf=other_csrf).status_code,400)
+        uid=next(u['id'] for u in self.client.get('/api/users').json['users'] if u['username']=='director')
+        self.post(f'/api/users/{uid}',{'active':False})
+        self.assertIsNone(other.get('/api/me').json['user'])
+
+    def test_rename_maps_to_existing_player(self):
+        self.commit(self.payload())
+        original=self.client.get('/api/rankings').json['players']
+        anna=next(p for p in original if p['name']=='Alpha, Anna')
+        text=fixture('2025-10-16').replace(f"{'Alpha, Anna':33}",f"{'Alpha, A.':33}")
+        payload=self.payload(text,day='2025-10-16');payload['mapping']={'1':anna['id']}
+        self.commit(payload)
+        self.assertEqual(len(self.client.get('/api/rankings').json['players']),4)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM aliases').fetchone()[0],5)
+
+    def test_same_day_correction_keeps_order(self):
+        first=self.commit(self.payload())
+        second=self.payload(fixture(draw=True));second['name']='Zweites Turnier'
+        self.commit(second)
+        expected={p['id']:p['rating'] for p in self.client.get('/api/rankings').json['players']}
+        self.post(f'/api/tournaments/{first}/undo',{'confirm':'Vereinsabend'})
+        self.commit(self.payload())
+        self.assertEqual(expected,{p['id']:p['rating'] for p in self.client.get('/api/rankings').json['players']})
+
+    def test_duplicate_player_mapping_rollback(self):
+        self.commit(self.payload())
+        first=self.client.get('/api/rankings').json['players'][0]['id']
+        payload=self.payload(fixture('2025-10-16').replace(f"{'Alpha, Anna':33}",f"{'New Anna':33}").replace(f"{'Beta, Ben':33}",f"{'New Ben':33}"),day='2025-10-16')
+        payload['mapping']={'1':first,'2':first}
+        self.assertEqual(self.post('/api/import/preview',payload).status_code,400)
+        with storage.open_db(self.path) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM aliases').fetchone()[0],4)
+
+    def test_backup_and_source_exclude_secrets(self):
+        self.commit(self.payload())
+        backup=backup_database(self.path)
+        with closing(sqlite3.connect(backup)) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
+        archive=self.client.get('/source.zip')
+        with zipfile.ZipFile(io.BytesIO(archive.data)) as z:
+            self.assertIn('app.py',z.namelist())
+            self.assertIn('LICENSE',z.namelist())
+            self.assertNotIn('.env',z.namelist())
+            self.assertFalse(any(n.startswith('data/') or n.endswith('.sqlite') for n in z.namelist()))
+        self.assertEqual(self.app.test_client().get('/api/backup').status_code,403)
+
+    def test_login_lockout_and_no_second_setup(self):
+        anonymous=self.app.test_client()
+        for _ in range(10):
+            self.assertEqual(self.post('/api/login',{'username':'missing','password':'wrong'},client=anonymous).status_code,401)
+        self.assertEqual(self.post('/api/login',{'username':'missing','password':'wrong'},client=anonymous).status_code,429)
+        self.assertEqual(self.post('/api/setup',{'token':'test-bootstrap-key-long-enough-123','username':'other','password':'long-password-for-test'}).status_code,400)
+
+
+if __name__=='__main__':
+    unittest.main()

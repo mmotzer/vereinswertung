@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#193d35">
+  <meta name="description" content="Die vereinsinterne Glicko-2-Rangliste für Blitz und Schnellschach.">
+  <title>Vereinswertung · Blitz & Schnellschach</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Zum Inhalt</a>
+  <header class="header">
+    <a class="brand" href="#rankings"><span class="brand-icon" aria-hidden="true">♞</span><span>Vereinswertung<small>Unser Schach. Unsere Zahlen.</small></span></a>
+    <button id="login-button" class="button secondary small">Anmelden</button>
+  </header>
+  <div class="shell">
+    <nav class="nav" aria-label="Hauptnavigation">
+      <a href="#rankings" data-page="rankings">Ranglisten</a>
+      <a href="#tournaments" data-page="tournaments">Turniere</a>
+      <a href="#import" data-page="import" class="auth-only" hidden>Importieren</a>
+      <a href="#help" data-page="help">So funktioniert’s</a>
+      <a href="#admin" data-page="admin" class="admin-only" hidden>Zugänge</a>
+    </nav>
+    <main id="main" tabindex="-1">
+      <section id="page-rankings" class="page">
+        <div class="eyebrow">VEREINSINTERN · GLICKO-2</div>
+        <div class="page-heading"><div><h1>Jede Partie zählt.</h1><p class="lead">Die Spielstärke entwickelt sich am Brett.<br>Hier wird sie sichtbar.</p></div><span class="hero-piece" aria-hidden="true">♜</span></div>
+        <div class="rank-controls"><div class="segments" role="group" aria-label="Wertungskategorie"><button data-category="blitz" class="selected" aria-pressed="true">⚡ Blitz</button><button data-category="rapid" aria-pressed="false">◷ Schnellschach</button></div><a id="csv-link" class="text-link" href="/api/export.csv?category=blitz">CSV exportieren ↗</a></div>
+        <div id="rank-stats" class="stats"></div>
+        <div class="list-toolbar"><label class="search-label"><span aria-hidden="true">⌕</span><input id="player-search" type="search" placeholder="Spieler suchen" aria-label="Spieler suchen"></label><label class="check-label"><input id="established-only" type="checkbox"> Nur gefestigte Wertungen</label></div>
+        <div id="ranking-list" aria-live="polite"></div>
+        <p class="footnote"><span class="question-dot">?</span> Vorläufig: Die Wertung ist noch unsicher (RD ≥ 110). Alle starten bei 1500; DWZ und Elo werden nicht verwendet.</p>
+      </section>
+      <section id="page-tournaments" class="page" hidden><div class="eyebrow">DIE PARTIEN DAHINTER</div><h1>Turniere</h1><p class="lead">Alle gewerteten Ergebnisse an einem Ort.</p><div id="tournament-list"></div></section>
+      <section id="page-import" class="page" hidden>
+        <div class="eyebrow">FÜR TURNIERLEITER</div><h1>Ein Turnier hinzufügen.</h1><p class="lead">TRF hochladen. Zuordnung prüfen. Wertung speichern.</p>
+        <div class="steps"><span class="current">1 · Datei</span><span>2 · Vorschau</span><span>3 · Speichern</span></div>
+        <form id="upload-form" class="card upload-card"><label class="file-drop" for="trf-file"><span class="upload-icon" aria-hidden="true">↑</span><strong>TRF-Datei auswählen</strong><span>Export aus SWISS-CHESS · maximal 1 MB</span><input id="trf-file" type="file" accept=".trf,.txt" required></label><button class="button" type="submit">Datei prüfen →</button></form>
+        <form id="import-form" class="card" hidden>
+          <h2>Turnier & Spieler</h2><div class="form-grid"><label>Turniername<input id="import-name" maxlength="120" required></label><label>Kategorie<select id="import-category"><option value="blitz">Blitz</option><option value="rapid">Schnellschach</option></select></label><label>Turnierdatum<input id="import-date" type="date" required></label></div>
+          <details class="round-dates"><summary>Rundendaten prüfen · für mehrtägige Turniere anpassen</summary><div id="round-dates" class="form-grid"></div></details>
+          <p class="note">An einem Tag werden Partien rundenweise verarbeitet. Turniere derselben Kategorie am selben Tag bitte in tatsächlicher Reihenfolge importieren.</p>
+          <div id="import-summary" class="info-strip"></div><h3>Spielerzuordnung</h3><p class="muted">Bekannte Namen bleiben zugeordnet. Neue Spieler starten in beiden Kategorien bei 1500. Ähnliche Namen bitte prüfen.</p><div id="assignments"></div><div id="import-warnings"></div><button class="button" type="submit">Wertungsänderungen berechnen →</button>
+        </form>
+        <div id="import-preview" class="card" hidden></div>
+      </section>
+      <section id="page-help" class="page" hidden>
+        <div class="eyebrow">TRANSPARENT & NACHVOLLZIEHBAR</div><h1>Eine Zahl, die mitlernt.</h1><p class="lead">Glicko-2 misst Spielstärke und weiß,<br>wie sicher diese Einschätzung ist.</p>
+        <div class="help-grid"><article class="card"><span class="number">01</span><h2>Alle starten bei 1500.</h2><p>Blitz und Schnellschach haben getrennte Wertungen. DWZ, Elo und Lichess-Ratings haben keinen Einfluss. Nur eure Vereinspartien zählen.</p></article><article class="card"><span class="number">02</span><h2>Ergebnisse statt fixer Punkte.</h2><p>Gegnerstärke, Unsicherheit, Leistungsschwankungen und Figurenfarbe bestimmen die Änderung. Gewinn und Verlust müssen nicht gleich groß sein.</p></article><article class="card"><span class="number">03</span><h2>Jede Partie wird berechnet.</h2><p>Der Import erfolgt nach Turnierende. Die App verarbeitet die Runden nacheinander; beide Spieler einer Partie werden anhand ihrer vorherigen Werte aktualisiert.</p></article><article class="card"><span class="number">04</span><h2>Pausen erhöhen die Unsicherheit.</h2><p>Die Zahl bleibt erhalten. Die RD steigt mit der Zeit seit der letzten Partie dieser Kategorie. Nach einer Pause passt sich die Wertung schneller an.</p></article></div>
+        <article class="card prose"><h2>Für Turnierleiter</h2><ol><li>In SWISS-CHESS das abgeschlossene Turnier als TRF exportieren.</li><li>Anmelden, Datei hochladen und Blitz oder Schnellschach wählen.</li><li>Turnierdatum, Spielerzuordnung und Ergebnisse prüfen.</li><li>Vorschau berechnen und den Import bestätigen.</li></ol><p>Freilose und kampflose Ergebnisse werden nicht gewertet. Doppelte Importe werden abgewiesen. Eigene Importe können zurückgenommen werden; spätere Wertungen werden dann automatisch neu berechnet.</p><h3>Wie nah ist das an Lichess?</h3><p>Die Berechnung ist aus festgelegten Lichess-Quellen übertragen: Startwerte 1500 / RD 500 / Volatilität 0,09, Zeitfaktor 0,21436 pro Tag, Farbberücksichtigung und Wertungsregulierung für Blitz und Schnellschach.</p><p>Eine TRF enthält keine Abschlusszeiten. Daher erhalten alle Partien eines Rundentags denselben rechnerischen Zeitpunkt (12:00 UTC). Die Rundenreihenfolge bleibt erhalten. Das ist eine dokumentierte Zeitannahme; reale Lichess-Zeitstempel können andere Ergebnisse liefern. Betrugsprüfung, Bot-Konten und Punkt-Erstattungen von Lichess sind kein Teil dieser Vereinsapp.</p><p>Eine Vereinswertung von 1800 entspricht nicht automatisch 1800 auf Lichess. Die Spielergruppen unterscheiden sich.</p><a class="text-link" href="https://github.com/mmotzer/vereinswertung" target="_blank" rel="noopener noreferrer">Quellcode auf GitHub ↗</a></article>
+      </section>
+      <section id="page-admin" class="page" hidden>
+        <div class="eyebrow">ADMINISTRATION</div><h1>Turnierleiter-Zugänge</h1><p class="lead">Persönliche Konten. Nachvollziehbare Importe.</p>
+        <form id="user-form" class="card"><h2>Zugang anlegen</h2><div class="form-grid"><label>Benutzername<input name="username" minlength="3" maxlength="50" autocomplete="off" required></label><label>Startpasswort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><label>Rolle<select name="role"><option value="director">Turnierleiter</option><option value="admin">Administrator</option></select></label></div><button class="button">Zugang anlegen</button><p class="muted">Mindestens 12 Zeichen. Der Turnierleiter kann sein Passwort nach der Anmeldung ändern.</p></form>
+        <div id="user-list" class="card"></div><div class="card"><h2>Datensicherung</h2><p>Automatische tägliche Sicherungen liegen im Datenordner des NAS. Zusätzlich kannst du eine aktuelle Sicherung herunterladen.</p><a class="button secondary" href="/api/backup">Datenbank sichern ↓</a></div><div class="card"><h2>Aktivitätsprotokoll</h2><div id="audit-list"></div></div>
+      </section>
+    </main>
+    <footer><span>Vereinswertung · Blitz & Schnellschach</span><a href="https://github.com/mmotzer/vereinswertung" target="_blank" rel="noopener noreferrer">GitHub · AGPL-3.0</a></footer>
+  </div>
+  <div id="toast" role="status" hidden></div>
+  <dialog id="auth-dialog"><form id="auth-form"><button class="dialog-close" type="button" data-close="auth-dialog" aria-label="Schließen">×</button><div class="eyebrow" id="auth-eyebrow">TURNIERLEITER</div><h2 id="auth-title">Willkommen zurück.</h2><p id="auth-description" class="muted">Melde dich an, um ein Turnier zu importieren.</p><label id="setup-token-label" hidden>Einrichtungsschlüssel<input id="setup-token" type="password" autocomplete="off"></label><label>Benutzername<input id="auth-username" minlength="3" maxlength="50" autocomplete="username" required></label><label>Passwort<input id="auth-password" type="password" maxlength="200" autocomplete="current-password" required></label><p id="auth-error" class="error" role="alert" hidden></p><button id="auth-submit" class="button" type="submit">Anmelden →</button></form></dialog>
+  <dialog id="detail-dialog"><button class="dialog-close" data-close="detail-dialog" aria-label="Schließen">×</button><div id="detail-content"></div><button class="button secondary" type="button" data-close="detail-dialog">Zurück zur Übersicht</button></dialog>
+  <dialog id="account-dialog"><button class="dialog-close" data-close="account-dialog" aria-label="Schließen">×</button><h2>Dein Zugang</h2><p id="account-name"></p><form id="password-form"><label>Bisheriges Passwort<input name="old_password" type="password" autocomplete="current-password" maxlength="200" required></label><label>Neues Passwort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="button">Passwort ändern</button></form><hr><button id="logout-button" class="button secondary">Abmelden</button></dialog>
+  <dialog id="undo-dialog"><button class="dialog-close" data-close="undo-dialog" aria-label="Schließen">×</button><h2>Import zurücknehmen?</h2><p>Alle späteren Wertungen werden ohne dieses Turnier neu berechnet. Die Originaldatei bleibt für die Nachvollziehbarkeit erhalten.</p><form id="undo-form"><label id="undo-label">Turniername zur Bestätigung<input id="undo-name" autocomplete="off" required></label><button class="button danger">Zurücknehmen & neu berechnen</button></form></dialog>
+  <dialog id="reset-dialog"><button class="dialog-close" data-close="reset-dialog" aria-label="Schließen">×</button><h2>Passwort zurücksetzen</h2><p id="reset-name"></p><form id="reset-form"><label>Neues Startpasswort<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="button">Passwort setzen</button></form></dialog>
+</body>
+</html>

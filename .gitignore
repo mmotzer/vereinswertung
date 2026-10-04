@@ -1,0 +1,12 @@
+.venv/
+.runtime/
+artifacts/
+__pycache__/
+*.pyc
+data/
+.env
+*.sqlite*
+*.zip
+.pytest_cache/
+compose.nas-existing-tunnel.yaml
+docs/PRUEFUNG.md

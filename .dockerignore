@@ -1,0 +1,12 @@
+.git
+.venv
+.runtime
+.env
+data
+__pycache__
+**/__pycache__
+*.pyc
+*.zip
+*.tar.gz
+*.sqlite*
+artifacts
