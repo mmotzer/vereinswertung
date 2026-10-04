@@ -332,7 +332,7 @@ $('#lichess-mapping-form').addEventListener('change', invalidateLichess);
 function displayLichess(info) {
   lichessInfo = info; $('#lichess-consent').checked = false;
   $('#lichess-games').innerHTML = info.games.map(g => `<label class="check-label"><input type="checkbox" data-lichess-game="${escapeHtml(g.external_id)}" checked> ${escapeHtml(g.name)} · ${catName(g.category)} · ${new Date(g.played*1000).toLocaleString('de-DE')} · ${escapeHtml(g.parsed.players[0].name)} – ${escapeHtml(g.parsed.players[1].name)} · ${resultLabel(g.parsed.games[0].score)}</label>`).join('');
-  $('#lichess-assignments').innerHTML = info.assignments.map(a => `<label>${escapeHtml(a.name)}<select data-lichess-player="${escapeHtml(a.name)}" ${a.player_id ? 'disabled' : ''}><option value="">Vereinsspieler auswählen</option>${info.players.map(p => `<option value="${p.id}" ${p.id===a.player_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></label>`).join('');
+  $('#lichess-assignments').innerHTML = info.assignments.map(a => `<label>${escapeHtml(a.name)}<select data-lichess-player="${escapeHtml(a.name)}" ${a.player_id && !a.proposed ? 'disabled' : ''}><option value="">Vereinsspieler auswählen</option>${info.players.map(p => `<option value="${p.id}" ${p.id===a.player_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></label>`).join('');
   $('#lichess-mapping-form').hidden = false;
   $('#lichess-mapping-form').scrollIntoView({behavior: 'smooth', block: 'start'});
 }
@@ -373,7 +373,7 @@ let submissionPlayers = [];
 async function loadSubmissions() {
   const [people,data] = await Promise.all([api('/api/submission-players'),api('/api/submissions')]);
   submissionPlayers=people.players;
-  const options='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}" ${p.available ? '' : 'disabled'}>${escapeHtml(p.name)}${p.available ? '' : ' · Lichess-Name fehlt'}</option>`).join('');
+  const options='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.available ? '' : ' · Lichess-Name fehlt'}</option>`).join('');
   for (const id of ['submission-first','submission-second']) { const value=$('#'+id).value; $('#'+id).innerHTML=options; $('#'+id).value=value; }
   $('#account-player').innerHTML='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.username ? ' · '+escapeHtml(p.username) : ''}</option>`).join('');
   const names = Object.fromEntries(people.players.map(p => [p.id,p.name]));
@@ -383,8 +383,8 @@ async function loadSubmissions() {
 }
 $('#submission-form').addEventListener('submit', event => {
   event.preventDefault(); busy(event.submitter,async () => {
-    await api('/api/submissions',{mode:'match',first_player:Number($('#submission-first').value),second_player:Number($('#submission-second').value),day:$('#submission-day').value,consent:$('#submission-consent').checked});
-    $('#submission-consent').checked=false; toast('Zur Prüfung bei der Turnierleitung eingereicht.'); await loadSubmissions(); $('#submission-list').scrollIntoView({behavior:'smooth',block:'start'});
+    await api('/api/submissions',{mode:'match',first_player:Number($('#submission-first').value),second_player:Number($('#submission-second').value),first:$('#submission-first-lichess').value.trim(),second:$('#submission-second-lichess').value.trim(),day:$('#submission-day').value,consent:$('#submission-consent').checked});
+    $('#submission-first-lichess').value=''; $('#submission-second-lichess').value=''; $('#submission-consent').checked=false; toast('Zur Prüfung bei der Turnierleitung eingereicht.'); await loadSubmissions(); $('#submission-list').scrollIntoView({behavior:'smooth',block:'start'});
   });
 });
 $('#lichess-account-form').addEventListener('submit', event => {

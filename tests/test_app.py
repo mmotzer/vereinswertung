@@ -221,9 +221,7 @@ class AppTests(unittest.TestCase):
         for path in ['/api/import/inspect','/api/import/preview','/api/import/commit','/api/lichess/inspect','/api/lichess/preview','/api/invitations']:
             self.assertEqual(self.post(path,{},member,csrf).status_code,403,path)
         players=self.client.get('/api/rankings').json['players'][:2]
-        for player,name in zip(players,['Anna','Ben']):
-            self.assertEqual(self.post(f"/api/players/{player['id']}/lichess",{'username':name}).status_code,200)
-        data={'mode':'match','first_player':players[0]['id'],'second_player':players[1]['id'],'day':'2025-09-17','consent':True}
+        data={'mode':'match','first_player':players[0]['id'],'second_player':players[1]['id'],'first':'Anna','second':'Ben','day':'2025-09-17','consent':True}
         before=[(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
         submitted=self.post('/api/submissions',data,member,csrf)
         self.assertEqual(submitted.status_code,200,submitted.json)
@@ -235,6 +233,7 @@ class AppTests(unittest.TestCase):
         with patch('lichess_import.fetch_match',return_value=[item]):
             checked=self.post('/api/lichess/inspect',{'submission_id':sid})
         self.assertEqual(checked.status_code,200,checked.json)
+        self.assertTrue(all(a.get('proposed') for a in checked.json['assignments']))
         preview=self.post('/api/lichess/preview',{'token':checked.json['token'],'consent':True,'selected':['abcdefgh'],'mapping':{'Lichess: Anna':players[0]['id'],'Lichess: Ben':players[1]['id']}})
         self.assertEqual(preview.status_code,200,preview.json)
         self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)

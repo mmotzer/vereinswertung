@@ -398,7 +398,16 @@ def create_app(config=None):
         participants = [{"number":i+1,"name":name} for i,name in enumerate(unique)]
         with db():
             token = store_preview({"kind":"lichess-inspect","items":items,"submission_id":submission_id})
-        return jsonify(token=token, submission_id=submission_id, games=items, assignments=storage.suggestions(db(),{"players":participants}),
+        assignments=storage.suggestions(db(),{"players":participants})
+        if submission_id is not None:
+            proposed={storage.normalize('Lichess: '+data[key]):data[key+'_player'] for key in ('first','second')}
+            for assignment in assignments:
+                pid=proposed.get(storage.normalize(assignment['name']))
+                if pid:
+                    assignment['player_id']=pid
+                    assignment['proposed']=True
+                    assignment['matched_name']=db().execute('SELECT name FROM players WHERE id=?',(pid,)).fetchone()[0]
+        return jsonify(token=token, submission_id=submission_id, games=items, assignments=assignments,
             players=[dict(r) for r in db().execute("SELECT id,name FROM players ORDER BY name")])
 
     @app.post("/api/lichess/preview")

@@ -25,16 +25,23 @@ def validate_submission(data,db):
         first_id,second_id,day = data.get('first_player'),data.get('second_player'),data.get('day')
         if not isinstance(first_id,int) or not isinstance(second_id,int) or first_id==second_id:
             raise ValueError('Zwei verschiedene Vereinsspieler auswählen')
-        first=db.execute('SELECT username FROM lichess_accounts WHERE player_id=?',(first_id,)).fetchone()
-        second=db.execute('SELECT username FROM lichess_accounts WHERE player_id=?',(second_id,)).fetchone()
-        if not first or not second:
-            raise ValueError('Für beide Spieler muss die Turnierleitung zuerst einen Lichess-Namen hinterlegen')
+        names=[]
+        for key,pid in [('first',first_id),('second',second_id)]:
+            if not db.execute('SELECT 1 FROM players WHERE id=?',(pid,)).fetchone():
+                raise ValueError('Vereinsspieler nicht gefunden')
+            account=db.execute('SELECT username FROM lichess_accounts WHERE player_id=?',(pid,)).fetchone()
+            name=data.get(key) or (account[0] if account else '')
+            if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,30}',name.strip()):
+                raise ValueError('Für beide Spieler einen gültigen Lichess-Namen eingeben')
+            names.append(name.strip())
+        if names[0].casefold()==names[1].casefold():
+            raise ValueError('Zwei verschiedene Lichess-Namen eingeben')
         try:
             if date.fromisoformat(day)>datetime.now(ZoneInfo("Europe/Berlin")).date():
                 raise ValueError()
         except (TypeError,ValueError):
             raise ValueError('Gültigen Spieltag auswählen, nicht in der Zukunft')
-        payload={'mode':'match','first':first[0],'second':second[0],'first_player':first_id,'second_player':second_id,'day':day}
+        payload={'mode':'match','first':names[0],'second':names[1],'first_player':first_id,'second_player':second_id,'day':day}
     else:
         raise ValueError('Spieltag und zwei Vereinsspieler auswählen')
     return {**payload,'consent':True},note.strip()
