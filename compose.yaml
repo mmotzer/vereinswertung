@@ -1,6 +1,6 @@
 services:
   app:
-    image: vereinswertung:1.16
+    image: vereinswertung:1.17
     restart: unless-stopped
     environment:
       BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?Bitte Einrichtungsschlüssel setzen}

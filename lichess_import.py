@@ -94,7 +94,7 @@ def parse_game(g):
     played = g.get('lastMoveAt',0)/1000
     if not 0 < played <= time.time() + 60:
         raise ValueError('Partiezeit ungültig')
-    day = datetime.fromtimestamp(played,timezone.utc).date().isoformat()
+    day = datetime.fromtimestamp(played,ZoneInfo('Europe/Berlin')).date().isoformat()
     gid = g['id']
     return {'external_id':gid,'played':played,'text':'lichess:'+gid,'filename':gid+'.lichess',
         'name':'Lichess · '+gid,'category':g['speed'],'round_dates':[day],

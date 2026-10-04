@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS games(
  id INTEGER PRIMARY KEY, tournament_id INTEGER NOT NULL REFERENCES tournaments(id),
  round INTEGER NOT NULL, white INTEGER NOT NULL REFERENCES players(id),
  black INTEGER NOT NULL REFERENCES players(id), score REAL NOT NULL,
- played REAL NOT NULL, UNIQUE(tournament_id,round,white), UNIQUE(tournament_id,round,black));
+ played REAL NOT NULL, external_id TEXT, original_sequence INTEGER, UNIQUE(tournament_id,round,white), UNIQUE(tournament_id,round,black));
 CREATE TABLE IF NOT EXISTS ratings(
  player_id INTEGER NOT NULL REFERENCES players(id), category TEXT NOT NULL,
  rating REAL NOT NULL, rd REAL NOT NULL, volatility REAL NOT NULL,
@@ -120,6 +120,17 @@ def initialize(path):
         db.execute('UPDATE tournaments SET sequence=id WHERE sequence IS NULL')
         if 'player_id' not in {r[1] for r in db.execute('PRAGMA table_info(invitations)')}:
             db.execute('ALTER TABLE invitations ADD COLUMN player_id INTEGER REFERENCES players(id)')
+        if 'external_id' not in {r[1] for r in db.execute('PRAGMA table_info(games)')}:
+            db.commit()
+            backup=Path(path).parent/'backups'/('before-lichess-days-'+str(time.time_ns())+'.sqlite')
+            backup.parent.mkdir(exist_ok=True)
+            with closing(sqlite3.connect(backup)) as snapshot: db.backup(snapshot)
+            db.execute('ALTER TABLE games ADD COLUMN external_id TEXT')
+            db.execute('ALTER TABLE games ADD COLUMN original_sequence INTEGER')
+            db.execute("UPDATE games SET original_sequence=(SELECT sequence FROM tournaments WHERE id=games.tournament_id)")
+            db.execute("UPDATE games SET external_id=(SELECT substr(original,9) FROM tournaments WHERE id=games.tournament_id AND source='lichess')")
+            group_lichess_days(db)
+            bump(db)
         for alias in db.execute("SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"):
             db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(alias['player_id'],alias['name'][9:]))
 
@@ -229,6 +240,8 @@ def import_tournament(db, payload, owner):
         canonical["external_id"] = payload["external_id"]
     fingerprint = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
     raw_hash = hashlib.sha256(payload["text"].encode()).hexdigest()
+    if payload.get('external_id') and db.execute("SELECT 1 FROM games g JOIN tournaments t ON t.id=g.tournament_id WHERE t.active=1 AND g.external_id=?",(payload['external_id'],)).fetchone():
+        raise ValueError('Diese Lichess-Partie wurde bereits importiert')
     if db.execute("SELECT id FROM tournaments WHERE active=1 AND (fingerprint=? OR (raw_hash=? AND category=?))",
                   (fingerprint, raw_hash, category)).fetchone():
         raise ValueError("Dieses Turnier wurde bereits importiert. Für eine Korrektur zuerst zurücknehmen.")
@@ -253,8 +266,31 @@ def import_tournament(db, payload, owner):
     for g in games:
         db.execute("INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
                    (tid, g["round"], g["white"], g["black"], g["score"], payload.get("played", timestamp(dates[g["round"] - 1]))))
+    if payload.get('external_id'):
+        db.execute('UPDATE games SET external_id=?,original_sequence=? WHERE tournament_id=?',(payload['external_id'],sequence,tid))
+        group_lichess_days(db)
+        tid=db.execute('SELECT tournament_id FROM games WHERE external_id=? ORDER BY id DESC LIMIT 1',(payload['external_id'],)).fetchone()[0]
     rebuild(db)
     return tid
+
+
+def group_lichess_days(db):
+    from zoneinfo import ZoneInfo
+    groups={}
+    for row in db.execute("SELECT t.id,t.category,g.played FROM tournaments t JOIN games g ON g.tournament_id=t.id WHERE t.active=1 AND t.source='lichess' ORDER BY t.sequence,t.id,g.id"):
+        day=datetime.fromtimestamp(row['played'],ZoneInfo('Europe/Berlin')).date().isoformat()
+        groups.setdefault((day,row['category']),set()).add(row['id'])
+    for (day,category),ids in groups.items():
+        target=min(ids)
+        for tid in ids: db.execute('UPDATE games SET round=-id WHERE tournament_id=?',(tid,))
+        for tid in ids:
+            if tid!=target:
+                db.execute('UPDATE games SET tournament_id=? WHERE tournament_id=?',(target,tid))
+                db.execute('UPDATE tournaments SET active=0,hidden=1 WHERE id=?',(tid,))
+        games=list(db.execute('SELECT id FROM games WHERE tournament_id=? ORDER BY played,original_sequence,id',(target,)))
+        for number,row in enumerate(games,1): db.execute('UPDATE games SET round=? WHERE id=?',(number,row['id']))
+        db.execute("UPDATE tournaments SET name=?,date=?,end_date=?,round_dates=? WHERE id=?",('Lichess-Vereinspartien · '+day,day,day,json.dumps([day]*len(games)),target))
+    return groups
 
 
 def rebuild(db):
@@ -267,7 +303,7 @@ def rebuild(db):
     db.execute("DELETE FROM ratings")
     state = {}
     for g in db.execute("""SELECT g.*,t.category FROM games g JOIN tournaments t ON t.id=g.tournament_id
-                            WHERE t.active=1 ORDER BY g.played,t.sequence,t.id,g.round,g.id"""):
+                            WHERE t.active=1 ORDER BY g.played,COALESCE(g.original_sequence,t.sequence),g.id"""):
         cat = g["category"]
         wkey, bkey = (g["white"], cat), (g["black"], cat)
         w, b = state.get(wkey, Rating()), state.get(bkey, Rating())

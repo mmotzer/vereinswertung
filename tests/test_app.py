@@ -154,6 +154,43 @@ class AppTests(unittest.TestCase):
         with storage.open_db(self.path) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
 
+    def test_lichess_day_group_keeps_chronology_and_duplicate_protection(self):
+        import lichess_import
+        self.commit(self.payload())
+        ids={p['name']:p['id'] for p in self.client.get('/api/rankings').json['players']}
+        def item(gid,stamp):
+            result=lichess_import.parse_game({'id':gid,'variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':stamp,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+            result['mapping']={'1':ids['Alpha, Anna'],'2':ids['Beta, Ben']}
+            return result
+        late=item('abcdefgh',1758101000000)
+        early=item('ijklmnop',1758100000000)
+        with storage.open_db(self.path) as db:
+            owner=db.execute('SELECT id FROM users').fetchone()[0]
+            first=storage.import_tournament(db,late,owner)
+            second=storage.import_tournament(db,early,owner)
+            self.assertEqual(first,second)
+            games=list(db.execute('SELECT round,external_id,played FROM games WHERE tournament_id=? ORDER BY round',(first,)))
+            self.assertEqual([(g['round'],g['external_id']) for g in games],[(1,'ijklmnop'),(2,'abcdefgh')])
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tournaments WHERE source='lichess' AND active=1").fetchone()[0],1)
+            before=[tuple(r) for r in db.execute('SELECT * FROM ratings ORDER BY player_id,category')]
+            storage.group_lichess_days(db)
+            storage.rebuild(db)
+            self.assertEqual(before,[tuple(r) for r in db.execute('SELECT * FROM ratings ORDER BY player_id,category')])
+            with self.assertRaises(ValueError): storage.import_tournament(db,early,owner)
+            # Recreate the old one-game-per-import layout before exercising migration.
+            old=db.execute("SELECT id FROM tournaments WHERE source='lichess' AND id!=?",(first,)).fetchone()[0]
+            db.execute('UPDATE games SET tournament_id=?,round=1 WHERE external_id=?',(old,'ijklmnop'))
+            db.execute('UPDATE games SET round=1 WHERE tournament_id=?',(first,))
+            db.execute('UPDATE tournaments SET active=1,hidden=0 WHERE id=?',(old,))
+            db.execute('ALTER TABLE games DROP COLUMN external_id')
+            db.execute('ALTER TABLE games DROP COLUMN original_sequence')
+        storage.initialize(self.path)
+        with storage.open_db(self.path) as db:
+            storage.rebuild(db)
+            self.assertEqual(before,[tuple(r) for r in db.execute('SELECT * FROM ratings ORDER BY player_id,category')])
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tournaments WHERE source='lichess' AND active=1").fetchone()[0],1)
+            self.assertEqual([r[0] for r in db.execute('SELECT round FROM games WHERE tournament_id=? ORDER BY round',(first,))],[1,2])
+
     def test_pwa_boot_assets_are_public_but_club_data_requires_login(self):
         anonymous=self.app.test_client()
         with anonymous.get('/sw.js') as response:
@@ -193,7 +230,7 @@ class AppTests(unittest.TestCase):
         self.assertNotIn('abcdefgh',json.dumps(detail.json))
         self.assertNotIn('Lichess: Anna',json.dumps(detail.json))
         profile=self.client.get(f"/api/players/{players[0]['id']}",headers=headers).json
-        self.assertTrue(any(h['tournament_id']==tid and h['name']=='Lichess-Vereinspartie' for h in profile['history']))
+        self.assertTrue(any(h['tournament_id']==tid and h['name']=='Lichess-Vereinspartien' for h in profile['history']))
         self.assertEqual(profile['ratings']['blitz']['games'],2)
         for path in ['/api/lichess/inspect','/api/lichess/preview']:
             self.assertEqual(self.client.post(path,json={},headers={**headers,'Origin':'http://localhost','X-CSRF-Token':self.csrf}).status_code,403)
@@ -252,7 +289,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(preview.status_code,200,preview.json)
         self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)
         self.assertEqual(member.get('/api/submissions').json['submissions'][0]['status'],'approved')
-        self.assertTrue(any(t['name']=='Lichess-Vereinspartie' for t in member.get('/api/tournaments').json['tournaments']))
+        self.assertTrue(any(t['name']=='Lichess-Vereinspartien' for t in member.get('/api/tournaments').json['tournaments']))
         second=self.app.test_client()
         self.post('/api/users',{'username':'other','password':'long-password-for-test','role':'member'})
         self.login('other',second)

@@ -334,7 +334,7 @@ def create_app(config=None):
             WHERE h.player_id=? ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,)):
             entry = dict(h)
             if entry.pop("source") == "lichess" and not is_director():
-                entry["name"] = "Lichess-Vereinspartie"
+                entry["name"] = "Lichess-Vereinspartien"
             before, after = json.loads(h["before"]), json.loads(h["after"])
             entry.update(before=int(before["rating"]), after=int(after["rating"]),
                          diff=int(after["rating"]) - int(before["rating"]),
@@ -349,7 +349,7 @@ def create_app(config=None):
             (SELECT COUNT(*) FROM games WHERE tournament_id=t.id) games,
             (SELECT MAX(round) FROM games WHERE tournament_id=t.id) rounds
             FROM tournaments t WHERE t.hidden=0 ORDER BY date DESC,sequence DESC,id DESC""")
-        return jsonify(tournaments=[{**dict(r),"name":"Lichess-Vereinspartie" if r["source"]=="lichess" and not is_director() else r["name"]} for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
+        return jsonify(tournaments=[{**dict(r),"name":"Lichess-Vereinspartien" if r["source"]=="lichess" and not is_director() else r["name"]} for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
 
     @app.get("/api/tournaments/<int:tid>")
     def tournament(tid):
@@ -361,7 +361,7 @@ def create_app(config=None):
         if not is_director():
             detail.pop("director", None)
             if source and source["source"] == "lichess":
-                detail["name"]="Lichess-Vereinspartie"
+                detail["name"]="Lichess-Vereinspartien"
                 detail["skipped"]=[]
                 for game in detail["games"]:
                     game.pop("external_id",None)
@@ -540,7 +540,7 @@ def create_app(config=None):
                 tids = [storage.import_tournament(db(), item, g.user["id"]) for item in payload["items"]]
                 tid = tids[0]
                 if sid is not None:
-                    db().execute("UPDATE submissions SET status='approved',reviewer=?,reviewed=?,response=? WHERE id=?",(g.user["id"],time.time(),f"{len(tids)} ausgewählte Partien genehmigt und gewertet",sid))
+                    db().execute("UPDATE submissions SET status='approved',reviewer=?,reviewed=?,response=? WHERE id=?",(g.user["id"],time.time(),f"{len(payload['items'])} ausgewählte Partien genehmigt und gewertet",sid))
                     storage.audit(db(),g.user["id"],"approve_submission",f"Einreichung {sid}; Importe {tids}; Zustimmung bestätigt")
             else:
                 tid = storage.import_tournament(db(), payload, g.user["id"])
