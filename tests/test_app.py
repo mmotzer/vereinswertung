@@ -109,6 +109,23 @@ class AppTests(unittest.TestCase):
         self.assertEqual(r.status_code,200,r.json)
         return r.json['tournament_id']
 
+    def test_hide_cancelled_tournament_preserves_players_and_ratings(self):
+        tid=self.commit(self.payload())
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/hide',{}).status_code,400)
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'}).status_code,200)
+        before=self.client.get('/api/rankings').json
+        with storage.open_db(self.path) as db:
+            db.execute("UPDATE users SET role='director' WHERE username='admin'")
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/hide',{}).status_code,403)
+        with storage.open_db(self.path) as db:
+            db.execute("UPDATE users SET role='admin' WHERE username='admin'")
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/hide',{}).status_code,200)
+        self.assertEqual(self.client.get('/api/tournaments').json['tournaments'],[])
+        self.assertEqual(self.client.get('/api/rankings').json,before)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM games').fetchone()[0],2)
+
     def test_preview_does_not_write_players_or_ratings(self):
         p=self.preview(self.payload())
         self.assertEqual(len(p['tournament']['games']),2)
