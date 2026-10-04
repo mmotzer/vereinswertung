@@ -43,6 +43,7 @@ function empty(title, text, action = '') {
 }
 function refreshAuth() {
   $$('.auth-only').forEach(el => { el.hidden = !user; });
+  $$('.director-only').forEach(el => { el.hidden = !['director', 'admin'].includes(user?.role); });
   $$('.admin-only').forEach(el => { el.hidden = user?.role !== 'admin'; });
   $('#login-button').textContent = user ? user.username : needsSetup ? 'App einrichten' : 'Anmelden';
 }
@@ -298,7 +299,7 @@ $('#reset-form').addEventListener('submit', event => {
 async function navigate() {
   let page = location.hash.slice(1) || 'rankings';
   if (!['rankings','tournaments','import','help','admin'].includes(page)) page = 'rankings';
-  if ((page === 'import' && !user) || (page === 'admin' && user?.role !== 'admin')) { page = 'rankings'; location.hash = '#rankings'; }
+  if ((page === 'import' && !['director', 'admin'].includes(user?.role)) || (page === 'admin' && user?.role !== 'admin')) { page = 'rankings'; location.hash = '#rankings'; }
   $$('.page').forEach(el => { el.hidden = el.id !== 'page-' + page; });
   $$('.nav a').forEach(el => { el.classList.toggle('active', el.dataset.page === page); if (el.dataset.page === page) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   try {

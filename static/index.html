@@ -21,7 +21,7 @@
     <nav class="nav" aria-label="Hauptnavigation">
       <a href="#rankings" data-page="rankings">Ranglisten</a>
       <a href="#tournaments" data-page="tournaments">Turniere</a>
-      <a href="#import" data-page="import" class="auth-only" hidden>Importieren</a>
+      <a href="#import" data-page="import" class="director-only" hidden>Importieren</a>
       <a href="#help" data-page="help">So funktioniert’s</a>
       <a href="#admin" data-page="admin" class="admin-only" hidden>Zugänge</a>
     </nav>
@@ -47,8 +47,8 @@
           <div id="import-summary" class="info-strip"></div><h3>Spielerzuordnung</h3><p class="muted">Bekannte Namen bleiben zugeordnet. Neue Spieler starten in beiden Kategorien bei 1500. Ähnliche Namen bitte prüfen.</p><div id="assignments"></div><div id="import-warnings"></div><button class="button" type="submit">Wertungsänderungen berechnen →</button>
         </form>
         <div id="import-preview" class="card" hidden></div>
-        <form id="lichess-match-form" class="card"><h2>Lichess-Match laden</h2><p>Beide Lichess-Namen und Spieltag eingeben, anschließend die zu wertenden Partien auswählen.</p><div class="form-grid"><label>Erster Lichess-Name<input id="lichess-first" required maxlength="30"></label><label>Zweiter Lichess-Name<input id="lichess-second" required maxlength="30"></label><label>Spieltag (deutsche Zeit)<input id="lichess-day" type="date" required></label></div><button class="button" type="submit">Gemeinsame Partien laden →</button></form>
-        <form id="lichess-links-form" class="card"><h2>Lichess-Partien hinzufügen</h2><p>Bis zu 30 Partielinks, jeweils in einer neuen Zeile. Nur abgeschlossene Standard-Partien in Blitz oder Schnellschach.</p><label>Partielinks<textarea id="lichess-links" rows="5" maxlength="12000" placeholder="https://lichess.org/abcdefgh" required></textarea></label><button class="button" type="submit">Partien prüfen →</button></form>
+        <form id="lichess-match-form" class="card director-only" hidden><h2>Lichess-Match laden</h2><p>Beide Lichess-Namen und Spieltag eingeben, anschließend die zu wertenden Partien auswählen.</p><div class="form-grid"><label>Erster Lichess-Name<input id="lichess-first" required maxlength="30"></label><label>Zweiter Lichess-Name<input id="lichess-second" required maxlength="30"></label><label>Spieltag (deutsche Zeit)<input id="lichess-day" type="date" required></label></div><button class="button" type="submit">Gemeinsame Partien laden →</button></form>
+        <form id="lichess-links-form" class="card director-only" hidden><h2>Lichess-Partien hinzufügen</h2><p>Bis zu 30 Partielinks, jeweils in einer neuen Zeile. Nur abgeschlossene Standard-Partien in Blitz oder Schnellschach.</p><label>Partielinks<textarea id="lichess-links" rows="5" maxlength="12000" placeholder="https://lichess.org/abcdefgh" required></textarea></label><button class="button" type="submit">Partien prüfen →</button></form>
         <form id="lichess-mapping-form" class="card" hidden><h2>Vereinsspieler zuordnen</h2><div id="lichess-games"></div><div id="lichess-assignments"></div><label class="check-label"><input id="lichess-consent" type="checkbox" required> Beide Spieler haben vor der jeweiligen Partie der Vereinswertung zugestimmt – für alle aufgeführten Partien.</label><p class="note">Lichess-Zahlen werden ignoriert. Der Zeitpunkt des letzten Zuges bestimmt die Einordnung; TRF-Partien verwenden weiterhin 12:00 UTC pro Rundentag. Jeder Link wird als einzelner Import gespeichert und kann zurückgenommen werden.</p><button class="button" type="submit">Gemeinsame Vorschau berechnen →</button></form><div id="lichess-preview" class="card" hidden></div>
       </section>
       <section id="page-help" class="page" hidden>

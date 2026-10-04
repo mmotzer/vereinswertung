@@ -74,6 +74,9 @@ def initialize(path):
             db.execute('ALTER TABLE tournaments ADD COLUMN sequence INTEGER')
         if 'hidden' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
             db.execute('ALTER TABLE tournaments ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+        if 'source' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
+            db.execute("ALTER TABLE tournaments ADD COLUMN source TEXT NOT NULL DEFAULT 'trf'")
+            db.execute("UPDATE tournaments SET source='lichess' WHERE length(original)=16 AND original='lichess:' || substr(filename,1,8) AND filename=substr(original,9) || '.lichess'")
         db.execute('UPDATE tournaments SET sequence=id WHERE sequence IS NULL')
 
 
@@ -196,6 +199,8 @@ def import_tournament(db, payload, owner):
                      (payload["name"].strip(), category, dates[0], dates[-1], time.time(), owner,
                       payload["filename"], payload["text"], raw_hash, fingerprint, ENGINE_VERSION,
                       json.dumps(dates), json.dumps(payload["parsed"]["skipped"]), sequence)).lastrowid
+    if payload.get("external_id"):
+        db.execute("UPDATE tournaments SET source='lichess' WHERE id=?", (tid,))
     for g in games:
         db.execute("INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
                    (tid, g["round"], g["white"], g["black"], g["score"], payload.get("played", timestamp(dates[g["round"] - 1]))))

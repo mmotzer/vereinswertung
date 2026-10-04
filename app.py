@@ -148,6 +148,14 @@ def create_app(config=None):
             from werkzeug.exceptions import Forbidden
             raise Forbidden("Nur für Administratoren")
 
+    def is_director():
+        return bool(g.user and g.user["role"] in ("director", "admin"))
+
+    def director():
+        if not is_director():
+            from werkzeug.exceptions import Forbidden
+            raise Forbidden("Nur für Turnierleiter und Administratoren")
+
     def fields():
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -308,7 +316,7 @@ def create_app(config=None):
             t.id tournament_id,t.name,t.category,t.date,o.name opponent
             FROM history h JOIN games g ON g.id=h.game_id JOIN tournaments t ON t.id=g.tournament_id
             JOIN players o ON o.id=CASE WHEN g.white=h.player_id THEN g.black ELSE g.white END
-            WHERE h.player_id=? ORDER BY t.date DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,)):
+            WHERE h.player_id=? AND (t.source!='lichess' OR ?) ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,is_director())):
             entry = dict(h)
             before, after = json.loads(h["before"]), json.loads(h["after"])
             entry.update(before=int(before["rating"]), after=int(after["rating"]),
@@ -323,11 +331,14 @@ def create_app(config=None):
         rows = db().execute("""SELECT t.id,t.name,t.category,t.date,t.end_date,t.active,t.owner,
             (SELECT COUNT(*) FROM games WHERE tournament_id=t.id) games,
             (SELECT MAX(round) FROM games WHERE tournament_id=t.id) rounds
-            FROM tournaments t WHERE t.hidden=0 ORDER BY date DESC,sequence DESC,id DESC""")
+            FROM tournaments t WHERE t.hidden=0 AND (t.source!='lichess' OR ?) ORDER BY date DESC,sequence DESC,id DESC""", (is_director(),))
         return jsonify(tournaments=[dict(r) for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
 
     @app.get("/api/tournaments/<int:tid>")
     def tournament(tid):
+        source = db().execute("SELECT source FROM tournaments WHERE id=?",(tid,)).fetchone()
+        if source and source["source"] == "lichess":
+            director()
         detail = storage.tournament_detail(db(), tid)
         if not detail["active"] and (not g.user or (g.user["role"] != "admin" and detail["owner"] != g.user["id"])):
             from werkzeug.exceptions import Forbidden
@@ -358,6 +369,7 @@ def create_app(config=None):
 
     @app.post("/api/lichess/inspect")
     def lichess_inspect():
+        director()
         check_limit("lichess:"+str(g.user["id"]), 10)
         data = fields()
         items = lichess_import.fetch_match(data.get("first"),data.get("second"),data.get("day")) if data.get("mode") == "match" else lichess_import.fetch_games(data.get("links"))
@@ -370,6 +382,7 @@ def create_app(config=None):
 
     @app.post("/api/lichess/preview")
     def lichess_preview():
+        director()
         check_limit("preview:"+str(g.user["id"]),60)
         data = fields()
         if data.get("consent") is not True:
@@ -419,12 +432,14 @@ def create_app(config=None):
 
     @app.post("/api/import/inspect")
     def inspect():
+        director()
         text, parsed = upload(fields())
         return jsonify(parsed=parsed, assignments=storage.suggestions(db(), parsed),
                        players=[dict(r) for r in db().execute("SELECT id,name FROM players ORDER BY name")])
 
     @app.post("/api/import/preview")
     def preview():
+        director()
         check_limit("preview:" + str(g.user["id"]), 60)
         data = fields()
         text, parsed = upload(data)
@@ -465,6 +480,7 @@ def create_app(config=None):
 
     @app.post("/api/import/commit")
     def commit():
+        director()
         token = fields().get("token")
         if not isinstance(token, str):
             raise ValueError("Importvorschau fehlt")
@@ -479,6 +495,7 @@ def create_app(config=None):
             if payload.get("kind") == "lichess-inspect":
                 raise ValueError("Bitte zuerst eine Wertungsvorschau erstellen")
             if payload.get("kind") == "lichess-batch":
+                director()
                 tids = [storage.import_tournament(db(), item, g.user["id"]) for item in payload["items"]]
                 tid = tids[0]
             else:
@@ -499,6 +516,8 @@ def create_app(config=None):
             row = db().execute("SELECT * FROM tournaments WHERE id=? AND active=1", (tid,)).fetchone()
             if not row:
                 raise ValueError("Aktives Turnier nicht gefunden")
+            if row["source"] == "lichess":
+                director()
             if row["owner"] != g.user["id"] and g.user["role"] != "admin":
                 from werkzeug.exceptions import Forbidden
                 raise Forbidden("Nur eigene Importe dürfen zurückgenommen werden")

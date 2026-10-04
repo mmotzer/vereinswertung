@@ -170,6 +170,34 @@ class AppTests(unittest.TestCase):
                 self.assertEqual(response.status_code,200,path)
         self.assertEqual(anonymous.get('/api/rankings').status_code,401)
 
+    def test_lichess_details_are_restricted_to_directors(self):
+        from flask import g, request
+        import lichess_import
+        trf_id=self.commit(self.payload())
+        players=self.client.get('/api/rankings').json['players']
+        item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white',
+            'lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+        item['mapping']={'1':players[0]['id'],'2':players[1]['id']}
+        with storage.open_db(self.path) as db:
+            owner=db.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
+            tid=storage.import_tournament(db,item,owner)
+        def viewer_for_test():
+            if request.headers.get('X-Test-Viewer') and g.user:
+                g.user={**g.user,'role':'viewer'}
+        self.app.before_request_funcs[None].append(viewer_for_test)
+        headers={'X-Test-Viewer':'1'}
+        self.assertEqual([t['id'] for t in self.client.get('/api/tournaments',headers=headers).json['tournaments']],[trf_id])
+        self.assertEqual(self.client.get(f'/api/tournaments/{tid}',headers=headers).status_code,403)
+        profile=self.client.get(f"/api/players/{players[0]['id']}",headers=headers).json
+        self.assertTrue(all(h['tournament_id']!=tid for h in profile['history']))
+        self.assertEqual(profile['ratings']['blitz']['games'],2)
+        for path in ['/api/lichess/inspect','/api/lichess/preview']:
+            self.assertEqual(self.client.post(path,json={},headers={**headers,'Origin':'http://localhost','X-CSRF-Token':self.csrf}).status_code,403)
+        with storage.open_db(self.path) as db:
+            db.execute("UPDATE users SET role='director' WHERE id=?",(owner,))
+        self.assertEqual(self.client.get(f'/api/tournaments/{tid}').status_code,200)
+        self.assertEqual(len(self.client.get('/api/tournaments').json['tournaments']),2)
+
     def test_preview_does_not_write_players_or_ratings(self):
         p=self.preview(self.payload())
         self.assertEqual(len(p['tournament']['games']),2)
