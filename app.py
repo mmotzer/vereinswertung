@@ -328,11 +328,13 @@ def create_app(config=None):
         ratings = {cat: next((r for r in storage.ranking(db(), cat) if r["id"] == pid), None) for cat in ("blitz", "rapid")}
         history = []
         for h in db().execute("""SELECT h.before,h.after,g.round,g.score,g.white,g.played,
-            t.id tournament_id,t.name,t.category,t.date,o.name opponent
+            t.id tournament_id,t.name,t.source,t.category,t.date,o.name opponent
             FROM history h JOIN games g ON g.id=h.game_id JOIN tournaments t ON t.id=g.tournament_id
             JOIN players o ON o.id=CASE WHEN g.white=h.player_id THEN g.black ELSE g.white END
-            WHERE h.player_id=? AND (t.source!='lichess' OR ?) ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,is_director())):
+            WHERE h.player_id=? ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,)):
             entry = dict(h)
+            if entry.pop("source") == "lichess" and not is_director():
+                entry["name"] = "Lichess-Vereinspartie"
             before, after = json.loads(h["before"]), json.loads(h["after"])
             entry.update(before=int(before["rating"]), after=int(after["rating"]),
                          diff=int(after["rating"]) - int(before["rating"]),
@@ -343,23 +345,27 @@ def create_app(config=None):
 
     @app.get("/api/tournaments")
     def tournaments():
-        rows = db().execute("""SELECT t.id,t.name,t.category,t.date,t.end_date,t.active,t.owner,
+        rows = db().execute("""SELECT t.id,t.name,t.source,t.category,t.date,t.end_date,t.active,t.owner,
             (SELECT COUNT(*) FROM games WHERE tournament_id=t.id) games,
             (SELECT MAX(round) FROM games WHERE tournament_id=t.id) rounds
-            FROM tournaments t WHERE t.hidden=0 AND (t.source!='lichess' OR ?) ORDER BY date DESC,sequence DESC,id DESC""", (is_director(),))
-        return jsonify(tournaments=[dict(r) for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
+            FROM tournaments t WHERE t.hidden=0 ORDER BY date DESC,sequence DESC,id DESC""")
+        return jsonify(tournaments=[{**dict(r),"name":"Lichess-Vereinspartie" if r["source"]=="lichess" and not is_director() else r["name"]} for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
 
     @app.get("/api/tournaments/<int:tid>")
     def tournament(tid):
         source = db().execute("SELECT source FROM tournaments WHERE id=?",(tid,)).fetchone()
-        if source and source["source"] == "lichess":
-            director()
         detail = storage.tournament_detail(db(), tid)
         if not detail["active"] and (not g.user or (g.user["role"] != "admin" and detail["owner"] != g.user["id"])):
             from werkzeug.exceptions import Forbidden
             raise Forbidden()
-        if not g.user:
+        if not is_director():
             detail.pop("director", None)
+            if source and source["source"] == "lichess":
+                detail["name"]="Lichess-Vereinspartie"
+                detail["skipped"]=[]
+                for game in detail["games"]:
+                    game.pop("external_id",None)
+                    game.pop("external_url",None)
         return jsonify(detail)
 
     def upload(data):

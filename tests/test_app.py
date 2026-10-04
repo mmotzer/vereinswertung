@@ -187,10 +187,13 @@ class AppTests(unittest.TestCase):
                 g.user={**g.user,'role':'viewer'}
         self.app.before_request_funcs[None].append(viewer_for_test)
         headers={'X-Test-Viewer':'1'}
-        self.assertEqual([t['id'] for t in self.client.get('/api/tournaments',headers=headers).json['tournaments']],[trf_id])
-        self.assertEqual(self.client.get(f'/api/tournaments/{tid}',headers=headers).status_code,403)
+        self.assertEqual(set(t['id'] for t in self.client.get('/api/tournaments',headers=headers).json['tournaments']),{trf_id,tid})
+        detail=self.client.get(f'/api/tournaments/{tid}',headers=headers)
+        self.assertEqual(detail.status_code,200)
+        self.assertNotIn('abcdefgh',json.dumps(detail.json))
+        self.assertNotIn('Lichess: Anna',json.dumps(detail.json))
         profile=self.client.get(f"/api/players/{players[0]['id']}",headers=headers).json
-        self.assertTrue(all(h['tournament_id']!=tid for h in profile['history']))
+        self.assertTrue(any(h['tournament_id']==tid and h['name']=='Lichess-Vereinspartie' for h in profile['history']))
         self.assertEqual(profile['ratings']['blitz']['games'],2)
         for path in ['/api/lichess/inspect','/api/lichess/preview']:
             self.assertEqual(self.client.post(path,json={},headers={**headers,'Origin':'http://localhost','X-CSRF-Token':self.csrf}).status_code,403)
@@ -238,7 +241,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(preview.status_code,200,preview.json)
         self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)
         self.assertEqual(member.get('/api/submissions').json['submissions'][0]['status'],'approved')
-        self.assertTrue(all(not t['name'].startswith('Lichess') for t in member.get('/api/tournaments').json['tournaments']))
+        self.assertTrue(any(t['name']=='Lichess-Vereinspartie' for t in member.get('/api/tournaments').json['tournaments']))
         second=self.app.test_client()
         self.post('/api/users',{'username':'other','password':'long-password-for-test','role':'member'})
         self.login('other',second)
