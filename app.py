@@ -399,7 +399,7 @@ def create_app(config=None):
             if not row or row["status"] != "pending":
                 raise ValueError("Einreichung ist nicht mehr offen")
             data = json.loads(row["payload"])
-        items = lichess_import.fetch_match(data.get("first"),data.get("second"),data.get("day")) if data.get("mode") == "match" else lichess_import.fetch_games(data.get("links"))
+        items = data["items"] if submission_id is not None and "items" in data else (lichess_import.fetch_match(data.get("first"),data.get("second"),data.get("day")) if data.get("mode") == "match" else lichess_import.fetch_games(data.get("links")))
         unique = {p["name"]: p for item in items for p in item["parsed"]["players"]}
         participants = [{"number":i+1,"name":name} for i,name in enumerate(unique)]
         with db():

@@ -226,14 +226,25 @@ class AppTests(unittest.TestCase):
         players=self.client.get('/api/rankings').json['players'][:2]
         data={'mode':'match','first_player':players[0]['id'],'second_player':players[1]['id'],'first':'Anna','second':'Ben','day':'2025-09-17','consent':True}
         before=[(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
-        submitted=self.post('/api/submissions',data,member,csrf)
+        item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+        self.assertEqual(self.post('/api/submissions',data,member,csrf).status_code,400)
+        with patch('lichess_import.fetch_match',side_effect=ValueError('Lichess-Name nicht gefunden')):
+            failed=self.post('/api/submissions/inspect',data,member,csrf)
+        self.assertEqual(failed.status_code,400)
+        self.assertEqual(member.get('/api/submissions').json['submissions'],[])
+        extra={**item,'external_id':'ijklmnop'}
+        with patch('lichess_import.fetch_match',return_value=[item,extra]):
+            loaded=self.post('/api/submissions/inspect',data,member,csrf)
+        self.assertEqual(loaded.status_code,200,loaded.json)
+        selected={'token':loaded.json['token'],'selected':['abcdefgh'],'consent':True}
+        self.assertEqual(self.post('/api/submissions',{**selected,'selected':['unknown']},member,csrf).status_code,400)
+        submitted=self.post('/api/submissions',selected,member,csrf)
         self.assertEqual(submitted.status_code,200,submitted.json)
         sid=submitted.json['id']
-        self.assertEqual(self.post('/api/submissions',data,member,csrf).status_code,400)
+        self.assertEqual(self.post('/api/submissions',selected,member,csrf).status_code,400)
         self.assertEqual([(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']],before)
         self.assertNotIn('first',member.get('/api/submissions').json['submissions'][0]['payload'])
-        item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
-        with patch('lichess_import.fetch_match',return_value=[item]):
+        with patch('lichess_import.fetch_match',side_effect=AssertionError('Genehmigung muss geladene Auswahl verwenden')):
             checked=self.post('/api/lichess/inspect',{'submission_id':sid})
         self.assertEqual(checked.status_code,200,checked.json)
         self.assertTrue(all(a.get('proposed') for a in checked.json['assignments']))

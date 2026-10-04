@@ -30,6 +30,12 @@ def fetch_match(first, second, day):
         if len(raw)>1024*1024:
             raise ValueError('Lichess-Antwort zu groß')
         games=[json.loads(line) for line in raw.splitlines() if line.strip()]
+    except urllib.error.HTTPError as error:
+        if error.code==404:
+            raise ValueError('Lichess-Benutzername nicht gefunden. Bitte beide Namen prüfen.')
+        if error.code==429:
+            raise ValueError('Lichess begrenzt gerade die Anfragen. Bitte etwas später erneut laden.')
+        raise ValueError('Lichess konnte die Partien nicht liefern. Bitte später erneut laden.')
     except (urllib.error.URLError,TimeoutError,json.JSONDecodeError):
         raise ValueError('Lichess derzeit nicht erreichbar. Bitte später erneut versuchen.')
     if not games:

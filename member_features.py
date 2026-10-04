@@ -8,6 +8,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from flask import g, jsonify
 import storage
+import lichess_import
 
 
 def request_email(db, fallback=''):
@@ -155,10 +156,33 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
             result.append({**dict(r),'payload':payload})
         return jsonify(submissions=result)
 
+    @app.post('/api/submissions/inspect')
+    def inspect_submission():
+        check_limit('submission-load:'+str(g.user['id']),10)
+        payload,note=validate_submission(fields(),db())
+        items=lichess_import.fetch_match(payload['first'],payload['second'],payload['day'])
+        token=secrets.token_urlsafe(32)
+        with db():
+            db().execute('DELETE FROM previews WHERE expires<?',(time.time(),))
+            db().execute("DELETE FROM previews WHERE owner=?",(g.user['id'],))
+            db().execute('INSERT INTO previews VALUES(?,?,?,?,?)',(token,g.user['id'],storage.revision(db()),json.dumps({'kind':'member-match','payload':payload,'note':note,'items':items}),time.time()+1800))
+        return jsonify(token=token,games=[{'id':item['external_id'],'played':item['played'],'category':item['category'],'white_player':payload['first_player'] if storage.normalize(item['parsed']['players'][0]['name'])==storage.normalize('Lichess: '+payload['first']) else payload['second_player'],'score':item['parsed']['games'][0]['score']} for item in items])
+
     @app.post('/api/submissions')
     def submit():
         check_limit('submission:'+str(g.user['id']),10)
-        payload,note=validate_submission(fields(),db())
+        data=fields()
+        row=db().execute('SELECT payload FROM previews WHERE token=? AND owner=? AND expires>?',(data.get('token'),g.user['id'],time.time())).fetchone()
+        if not row: raise ValueError('Bitte zuerst Partien laden; die Auswahl ist abgelaufen')
+        loaded=json.loads(row['payload'])
+        if loaded.get('kind')!='member-match': raise ValueError('Ungültige Partieauswahl')
+        selected=data.get('selected')
+        available={item['external_id']:item for item in loaded['items']}
+        if not isinstance(selected,list) or not selected or any(not isinstance(gid,str) or gid not in available for gid in selected) or len(set(selected))!=len(selected):
+            raise ValueError('Mindestens eine der geladenen Partien auswählen')
+        if data.get('consent') is not True: raise ValueError('Zustimmung beider Spieler bestätigen')
+        payload={**loaded['payload'],'selected':sorted(selected),'items':[available[gid] for gid in sorted(selected)]}
+        note=loaded['note']
         encoded=json.dumps(payload,sort_keys=True)
         with db():
             if db().execute("SELECT 1 FROM submissions WHERE owner=? AND status='pending' AND payload=?",(g.user['id'],encoded)).fetchone():
