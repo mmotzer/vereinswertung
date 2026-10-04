@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.11 .
+   docker build -t vereinswertung:1.12 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.11` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.12` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -122,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.11 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.12 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen
@@ -184,3 +184,7 @@ Administratoren erzeugen unter „Zugänge → Mitglied einladen“ einen persö
 Turnierleiter und Administratoren hinterlegen unter „Einreichungen“ die Lichess-Namen der Vereinsspieler. Bereits bekannte Zuordnungen aus früheren Importen werden übernommen. Mitglieder wählen beim Einreichen nur Spieltag und zwei Vereinsspieler und bestätigen die vorherige Zustimmung beider Spieler. Sie sehen ausschließlich ihre eigenen Einreichungen und deren Status. Eine Einreichung verändert keine Wertung.
 
 Die Turnierleitung wählt „Partien prüfen“, lädt die gemeinsamen Partien vom angegebenen Tag und führt Spielerzuordnung, Partieauswahl und Vorschau durch. Erst „Import bestätigen“ speichert die ausgewählten Partien und genehmigt die Einreichung atomar. Ablehnungen erhalten eine Begründung. Mitglieder können keine direkten TRF- oder Lichess-Importe ausführen und keine fremden Lichess-Partiedetails abrufen. Vor Erweiterung der bestehenden Kontotabelle wird automatisch eine Datenbanksicherung erstellt; IDs und bestehende Zugänge bleiben erhalten.
+
+### Vorbereitete Vereinskonten
+
+Eine private `club-roster.json` im Deployment enthält nur `name` und vierstellige `club_number`. Sie wird nicht im öffentlichen Quellarchiv veröffentlicht. Beim ersten Start werden vorhandene Spieler samt Wertungen zugeordnet und gesperrte Mitgliedskonten angelegt; vorher wird eine Datenbanksicherung erstellt. Wiederholte Starts legen keine weiteren Konten an. Unter **Zugänge** wählt der Administrator einen Spieler und erstellt dessen persönlichen, sieben Tage gültigen Einmalcode. Das Mitglied übernimmt damit seinen vorbereiteten Zugang und wählt Benutzername und Passwort selbst. Ein neuer Code ersetzt einen noch offenen alten Code. DWZ und Elo werden nicht übernommen.

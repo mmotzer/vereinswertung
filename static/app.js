@@ -275,9 +275,12 @@ $('#import-form').addEventListener('submit', event => {
 });
 
 async function loadAdmin() {
-  const [accounts, audit, settings] = await Promise.all([api('/api/users'), api('/api/audit'), api('/api/settings')]);
+  const [accounts, audit, settings, roster] = await Promise.all([api('/api/users'), api('/api/audit'), api('/api/settings'), api('/api/club-members')]);
+  const pending=roster.members.filter(m => m.claimed === null);
+  $('#invitation-player').innerHTML='<option value="">Spieler auswählen</option>'+pending.map(m => `<option value="${m.player_id}">${escapeHtml(m.name)}</option>`).join('');
+  $('#club-member-list').innerHTML=roster.members.map(m => `<div class="user-row"><div><strong>${escapeHtml(m.name)}</strong><small>${m.claimed === null ? 'Noch nicht beansprucht' : 'Übernommen · '+escapeHtml(m.username)}</small></div>${m.claimed === null ? `<button class="button secondary" data-claim-player="${m.player_id}">Übernahmecode vorbereiten</button>` : ''}</div>`).join('');
   $('#request-email').value = settings.request_email;
-  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${roleName(u.role)} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
+  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.filter(u => !u.player_name || u.claimed !== null).map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${roleName(u.role)} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
   $('#audit-list').innerHTML = audit.events.map(e => `<div class="audit-item">${escapeHtml(new Date(e.created * 1000).toLocaleString('de-DE'))} · ${escapeHtml(e.username)} · ${escapeHtml(e.detail)}</div>`).join('');
   $$('[data-toggle-user]').forEach(button => button.addEventListener('click', () => busy(button, async () => {
     await api('/api/users/' + button.dataset.toggleUser, {active: button.dataset.active !== '1'}); await loadAdmin();
@@ -405,7 +408,17 @@ $('#submission-list').addEventListener('click', event => {
 });
 
 $('#create-invitation').addEventListener('click',event => busy(event.currentTarget,async () => {
-  const invite=await api('/api/invitations',{});$('#invitation-code').value=invite.code;$('#invitation-result').hidden=false;
-  $('#invitation-expiry').textContent='Gültig bis '+new Date(invite.expires*1000).toLocaleString('de-DE')+' · einmalig';
+  const pid=Number($('#invitation-player').value);
+  if (!pid) throw new Error('Bitte einen Vereinsspieler auswählen.');
+  const invite=await api('/api/invitations',{player_id:pid});$('#invitation-code').value=invite.code;$('#invitation-result').hidden=false;
+  $('#invitation-expiry').textContent=$('#invitation-player').selectedOptions[0].textContent+' · Gültig bis '+new Date(invite.expires*1000).toLocaleString('de-DE')+' · einmalig';
   $('#invitation-result').scrollIntoView({behavior:'smooth',block:'start'});
 }));
+
+$('#invitation-player').addEventListener('change',() => { $('#invitation-result').hidden=true; $('#invitation-code').value=''; });
+$('#club-member-list').addEventListener('click',event => {
+ const button=event.target.closest('[data-claim-player]');if(!button) return;
+ $('#invitation-player').value=button.dataset.claimPlayer;
+ $('#invitation-player').dispatchEvent(new Event('change'));
+ $('#create-invitation').scrollIntoView({behavior:'smooth',block:'center'});
+});

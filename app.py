@@ -26,6 +26,7 @@ from rating import ENGINE_VERSION
 import trf
 import lichess_import
 import member_features
+import club_roster
 
 ROOT = Path(__file__).resolve().parent
 
@@ -54,6 +55,8 @@ def create_app(config=None):
     if len(app.config["BOOTSTRAP_TOKEN"]) < 24:
         raise RuntimeError("BOOTSTRAP_TOKEN mit mindestens 24 Zeichen setzen (siehe README)")
     storage.initialize(app.config["DATABASE"])
+    roster_path = ROOT / "club-roster.json"
+    club_roster.from_file(roster_path if roster_path.is_file() else ROOT / ".runtime" / "club-roster.json",app.config["DATABASE"]) if not app.config.get("TESTING") else None
     password_slots = threading.BoundedSemaphore(2)
 
     def client_address():
@@ -218,12 +221,12 @@ def create_app(config=None):
     def me():
         return jsonify(user=g.user, csrf=g.session["csrf"] if g.session else None,
                        request_email=member_features.request_email(db(),app.config["REQUEST_EMAIL"]),
-                       needs_setup=not bool(db().execute("SELECT 1 FROM users LIMIT 1").fetchone()))
+                       needs_setup=not bool(db().execute("SELECT 1 FROM users WHERE password!='!unclaimed' LIMIT 1").fetchone()))
 
     @app.post("/api/setup")
     def setup():
         data = fields()
-        if db().execute("SELECT 1 FROM users LIMIT 1").fetchone():
+        if db().execute("SELECT 1 FROM users WHERE password!='!unclaimed' LIMIT 1").fetchone():
             raise ValueError("Die App ist bereits eingerichtet")
         if not isinstance(data.get("token"), str) or not secrets.compare_digest(data["token"], app.config["BOOTSTRAP_TOKEN"]):
             check_limit("setup:" + client_address(), 10)
@@ -232,7 +235,7 @@ def create_app(config=None):
         hashed = generate_password_hash(password)
         db().execute("BEGIN IMMEDIATE")
         try:
-            if db().execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            if db().execute("SELECT 1 FROM users WHERE password!='!unclaimed' LIMIT 1").fetchone():
                 raise ValueError("Die App ist bereits eingerichtet")
             uid = db().execute("INSERT INTO users(username,password,role,created) VALUES(?,?,'admin',?)",
                                (username, hashed, time.time())).lastrowid
@@ -575,7 +578,7 @@ def create_app(config=None):
     @app.get("/api/users")
     def users():
         admin()
-        return jsonify(users=[dict(r) for r in db().execute("SELECT id,username,role,active FROM users ORDER BY username")])
+        return jsonify(users=[dict(r) for r in db().execute("SELECT u.id,u.username,u.role,u.active,m.claimed,p.name player_name FROM users u LEFT JOIN club_members m ON m.user_id=u.id LEFT JOIN players p ON p.id=m.player_id ORDER BY username")])
 
     @app.post("/api/users")
     def add_user():
@@ -600,6 +603,9 @@ def create_app(config=None):
             user = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
             if not user:
                 raise ValueError("Zugang nicht gefunden")
+            pending=db().execute('SELECT 1 FROM club_members WHERE user_id=? AND claimed IS NULL',(uid,)).fetchone()
+            if pending and ('active' in data or 'password' in data):
+                raise ValueError("Für diesen Spieler einen persönlichen Übernahmecode erzeugen")
             if "active" in data:
                 if not isinstance(data["active"], bool):
                     raise ValueError("Ungültiger Kontostatus")
@@ -647,7 +653,7 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 

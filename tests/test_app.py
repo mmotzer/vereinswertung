@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app import create_app, backup_database
 import storage
+import club_roster
 import trf
 
 
@@ -381,6 +382,44 @@ class AppTests(unittest.TestCase):
             self.assertNotIn('.env',z.namelist())
             self.assertFalse(any(n.startswith('data/') or n.endswith('.sqlite') for n in z.namelist()))
         self.assertEqual(self.app.test_client().get('/api/backup').status_code,401)
+
+    def test_bound_member_claim_preserves_profile_and_account(self):
+        self.commit(self.payload())
+        with storage.open_db(self.path) as db:
+            pid=db.execute("SELECT id FROM players WHERE name='Alpha, Anna'").fetchone()[0]
+            club_roster.provision(db,[{'name':'Alpha, Anna','club_number':'0001'}])
+            uid=db.execute('SELECT user_id FROM club_members WHERE player_id=?',(pid,)).fetchone()[0]
+            rating=dict(db.execute('SELECT * FROM ratings WHERE player_id=? LIMIT 1',(pid,)).fetchone())
+        anon=self.app.test_client()
+        self.assertEqual(self.post('/api/login',{'username':'mitglied-0001','password':'!unclaimed'},client=anon).status_code,401)
+        old=self.post('/api/invitations',{'player_id':pid}).json['code']
+        new=self.post('/api/invitations',{'player_id':pid}).json['code']
+        data={'code':old,'username':'claimed','password':'long-password-for-test'}
+        self.assertEqual(self.post('/api/register',data,client=anon).status_code,400)
+        data['code']=new
+        self.assertEqual(self.post('/api/register',data,client=anon).status_code,200)
+        self.assertEqual(self.post('/api/register',data,client=anon).status_code,400)
+        with storage.open_db(self.path) as db:
+            member=db.execute('SELECT * FROM club_members WHERE player_id=?',(pid,)).fetchone()
+            self.assertEqual(member['user_id'],uid)
+            self.assertIsNotNone(member['claimed'])
+            self.assertEqual(db.execute('SELECT active FROM users WHERE id=?',(uid,)).fetchone()[0],1)
+            self.assertEqual(dict(db.execute('SELECT * FROM ratings WHERE player_id=? LIMIT 1',(pid,)).fetchone()),rating)
+        self.login('claimed',anon)
+        self.assertEqual(anon.get('/api/club-members').status_code,403)
+
+    def test_roster_is_idempotent_and_matches_transliterated_names(self):
+        path=Path(self.tmp.name)/'roster.json'
+        path.write_text(json.dumps([{'name':'Güler, Selim','club_number':'0001'}]),encoding='utf-8')
+        with storage.open_db(self.path) as db:
+            pid=db.execute("INSERT INTO players(name,created) VALUES('Gueler, Selim',0)").lastrowid
+        club_roster.from_file(path,self.path)
+        club_roster.from_file(path,self.path)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute('SELECT player_id FROM club_members').fetchone()[0],pid)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM club_members').fetchone()[0],1)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],1)
+        self.assertEqual(len(list((Path(self.path).parent/'backups').glob('before-roster-*'))),1)
 
     def test_entire_site_requires_login(self):
         self.commit(self.payload())

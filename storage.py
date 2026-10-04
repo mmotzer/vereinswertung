@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS lichess_accounts(
 CREATE TABLE IF NOT EXISTS invitations(
  id INTEGER PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, created_by INTEGER NOT NULL REFERENCES users(id),
  created REAL NOT NULL, expires REAL NOT NULL, used_by INTEGER REFERENCES users(id), used REAL);
+CREATE TABLE IF NOT EXISTS club_members(
+ player_id INTEGER PRIMARY KEY REFERENCES players(id), user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+ club_number TEXT NOT NULL UNIQUE, claimed REAL);
 """
 
 
@@ -115,6 +118,8 @@ def initialize(path):
             db.execute("ALTER TABLE tournaments ADD COLUMN source TEXT NOT NULL DEFAULT 'trf'")
             db.execute("UPDATE tournaments SET source='lichess' WHERE length(original)=16 AND original='lichess:' || substr(filename,1,8) AND filename=substr(original,9) || '.lichess'")
         db.execute('UPDATE tournaments SET sequence=id WHERE sequence IS NULL')
+        if 'player_id' not in {r[1] for r in db.execute('PRAGMA table_info(invitations)')}:
+            db.execute('ALTER TABLE invitations ADD COLUMN player_id INTEGER REFERENCES players(id)')
         for alias in db.execute("SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"):
             db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(alias['player_id'],alias['name'][9:]))
 

@@ -45,11 +45,18 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
     def invitation():
         admin()
         check_limit('invitations:'+str(g.user['id']),20)
+        pid=fields().get('player_id')
+        if pid is not None:
+            member=db().execute('SELECT claimed FROM club_members WHERE player_id=?',(pid,)).fetchone()
+            if not member or member['claimed'] is not None:
+                raise ValueError('Dieser Mitgliederzugang ist nicht zur Übernahme verfügbar')
         code=secrets.token_urlsafe(24)
         expires=time.time()+7*86400
         with db():
-            iid=db().execute('INSERT INTO invitations(code_hash,created_by,created,expires) VALUES(?,?,?,?)',
-                (hashlib.sha256(code.encode()).hexdigest(),g.user['id'],time.time(),expires)).lastrowid
+            if pid is not None:
+                db().execute('UPDATE invitations SET expires=? WHERE player_id=? AND used_by IS NULL',(time.time(),pid))
+            iid=db().execute('INSERT INTO invitations(code_hash,created_by,created,expires,player_id) VALUES(?,?,?,?,?)',
+                (hashlib.sha256(code.encode()).hexdigest(),g.user['id'],time.time(),expires,pid)).lastrowid
             storage.audit(db(),g.user['id'],'invite_create',f'Mitgliedercode {iid} erstellt')
         return jsonify(code=code,expires=expires)
 
@@ -68,10 +75,19 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
         password_hash=hash_password(password)
         db().execute('BEGIN IMMEDIATE')
         try:
-            invite=db().execute('SELECT id FROM invitations WHERE code_hash=? AND used_by IS NULL AND expires>?',(hashed,time.time())).fetchone()
+            invite=db().execute('SELECT id,player_id FROM invitations WHERE code_hash=? AND used_by IS NULL AND expires>?',(hashed,time.time())).fetchone()
             if not invite:
                 raise ValueError('Code ungültig, abgelaufen oder bereits verwendet')
-            uid=db().execute("INSERT INTO users(username,password,role,created) VALUES(?,?,'member',?)",(username,password_hash,time.time())).lastrowid
+            if invite['player_id'] is not None:
+                member=db().execute('SELECT user_id,claimed FROM club_members WHERE player_id=?',(invite['player_id'],)).fetchone()
+                if not member or member['claimed'] is not None:
+                    raise ValueError('Der Mitgliederzugang wurde bereits übernommen')
+                uid=member['user_id']
+                changed=db().execute("UPDATE users SET username=?,password=?,active=1 WHERE id=? AND role='member' AND active=0 AND password='!unclaimed'",(username,password_hash,uid))
+                if not changed.rowcount: raise ValueError('Dieser Zugang ist nicht zur Übernahme verfügbar')
+                db().execute('UPDATE club_members SET claimed=? WHERE player_id=?',(time.time(),invite['player_id']))
+            else:
+                uid=db().execute("INSERT INTO users(username,password,role,created) VALUES(?,?,'member',?)",(username,password_hash,time.time())).lastrowid
             db().execute('UPDATE invitations SET used_by=?,used=? WHERE id=?',(uid,time.time(),invite['id']))
             storage.audit(db(),uid,'member_register',f'Mitgliedercode {invite["id"]} eingelöst')
             db().commit()
@@ -79,6 +95,11 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
             db().rollback()
             raise
         return jsonify(ok=True)
+    @app.get('/api/club-members')
+    def club_members():
+        admin()
+        rows=db().execute('SELECT m.*,p.name,u.username,u.active FROM club_members m JOIN players p ON p.id=m.player_id JOIN users u ON u.id=m.user_id ORDER BY p.name')
+        return jsonify(members=[dict(r) for r in rows])
     @app.get('/api/submission-players')
     def submission_players():
         rows=db().execute('SELECT p.id,p.name,a.username FROM players p LEFT JOIN lichess_accounts a ON a.player_id=p.id ORDER BY p.name')
