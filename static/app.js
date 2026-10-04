@@ -383,12 +383,12 @@ async function loadSubmissions() {
   $('#submission-day').value ||= new Date().toLocaleDateString('sv-SE');
 }
 let submissionToken=null,submissionGeneration=0;
-function clearSubmissionSelection() { submissionGeneration++; submissionToken=null; $('#submission-selection').hidden=true; $('#submission-load-error').hidden=true; }
-for (const id of ['submission-first','submission-second','submission-day','submission-first-lichess','submission-second-lichess']) $('#'+id).addEventListener('input',clearSubmissionSelection);
+function clearSubmissionSelection() { submissionGeneration++; submissionToken=null; $('#submission-selection').hidden=true; $('#submission-direct-preview').hidden=true; $('#submission-load-error').hidden=true; }
+for (const id of ['submission-link','submission-first','submission-second','submission-day','submission-first-lichess','submission-second-lichess']) $('#'+id).addEventListener('input',clearSubmissionSelection);
 $('#submission-load').addEventListener('click',event => busy(event.currentTarget,async () => {
   clearSubmissionSelection(); const generation=submissionGeneration;
   try {
-    const info=await api('/api/submissions/inspect',{mode:'match',first_player:Number($('#submission-first').value),second_player:Number($('#submission-second').value),first:$('#submission-first-lichess').value.trim(),second:$('#submission-second-lichess').value.trim(),day:$('#submission-day').value,consent:$('#submission-consent').checked});
+    const info=await api('/api/submissions/inspect',{link:$('#submission-link').value.trim(),mode:'match',first_player:Number($('#submission-first').value),second_player:Number($('#submission-second').value),first:$('#submission-first-lichess').value.trim(),second:$('#submission-second-lichess').value.trim(),day:$('#submission-day').value,consent:$('#submission-consent').checked});
     if(generation!==submissionGeneration) return;
     submissionToken=info.token;
     $('#submission-games').innerHTML=info.games.map(g => `<label class="check-label"><input type="checkbox" data-submission-game="${escapeHtml(g.id)}"> ${escapeHtml(new Date(g.played*1000).toLocaleString('de-DE'))} · ${catName(g.category)} · ${resultLabel(g.score)} · Weiß: ${escapeHtml(submissionPlayers.find(p=>p.id===g.white_player)?.name || 'Spieler')}</label>`).join('');
@@ -401,6 +401,24 @@ $('#submission-form').addEventListener('submit',event => {
     await api('/api/submissions',{token:submissionToken,selected:$$('[data-submission-game]:checked').map(e=>e.dataset.submissionGame),consent:$('#submission-consent').checked});
     clearSubmissionSelection(); $('#submission-consent').checked=false; toast('Ausgewählte Partien zur Prüfung eingereicht.'); await loadSubmissions(); $('#submission-list').scrollIntoView({behavior:'smooth',block:'start'});
   });
+});
+$('#submission-direct').addEventListener('click',event => busy(event.currentTarget,async () => {
+  if(!submissionToken) throw new Error('Bitte zuerst Partien laden.');
+  const generation=submissionGeneration;
+  const preview=await api('/api/lichess/preview',{token:submissionToken,selected:$$('[data-submission-game]:checked').map(e=>e.dataset.submissionGame),consent:$('#submission-consent').checked});
+  if(generation!==submissionGeneration) return;
+  const panel=$('#submission-direct-preview');
+  panel.innerHTML=`<h2>${preview.count} Partien direkt werten</h2>${changesTable(preview.changes.map(c=>({...c,name:c.name+' · '+catName(c.category)})))}<button class="button" id="submission-direct-save">Wertung verbindlich speichern →</button>`;
+  panel.hidden=false;panel.scrollIntoView({behavior:'smooth',block:'start'});
+  $('#submission-direct-save').addEventListener('click',event=>busy(event.currentTarget,async()=>{
+    await api('/api/import/commit',{token:preview.token});clearSubmissionSelection();toast('Partien direkt gewertet.');location.hash='#tournaments';await navigate();
+  }));
+}));
+$('#submission-link').addEventListener('input',()=>{
+ const single=Boolean($('#submission-link').value.trim());
+ for(const id of ['submission-day','submission-first-lichess','submission-second-lichess']) $('#'+id).closest('label').hidden=single;
+ $('#submission-day').required=!single;
+ $('#submission-load').textContent=single?'Einzelpartie laden →':'Gemeinsame Partien laden →';
 });
 $('#lichess-account-form').addEventListener('submit', event => {
   event.preventDefault(); busy(event.submitter,async () => { await api('/api/players/'+Number($('#account-player').value)+'/lichess',{username:$('#account-lichess-name').value.trim()}); event.target.reset(); toast('Lichess-Konto hinterlegt.'); await loadSubmissions(); });
@@ -437,3 +455,5 @@ $('#club-member-list').addEventListener('click',event => {
  $('#invitation-player').dispatchEvent(new Event('change'));
  $('#create-invitation').scrollIntoView({behavior:'smooth',block:'center'});
 });
+
+for(const id of ['submission-games','submission-consent']) $('#'+id).addEventListener('change',()=>{submissionGeneration++; $('#submission-direct-preview').hidden=true;});

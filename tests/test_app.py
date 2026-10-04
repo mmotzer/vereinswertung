@@ -191,6 +191,30 @@ class AppTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM tournaments WHERE source='lichess' AND active=1").fetchone()[0],1)
             self.assertEqual([r[0] for r in db.execute('SELECT round FROM games WHERE tournament_id=? ORDER BY round',(first,))],[1,2])
 
+    def test_single_link_member_submission_and_director_direct_import(self):
+        from unittest.mock import patch
+        import lichess_import
+        self.commit(self.payload())
+        players=self.client.get('/api/rankings').json['players'][:2]
+        item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
+        data={'link':'https://lichess.org/abcdefgh','first_player':players[0]['id'],'second_player':players[1]['id'],'consent':True}
+        self.post('/api/users',{'username':'member','password':'long-password-for-test','role':'member'})
+        member=self.app.test_client();csrf=self.login('member',member)
+        with patch('lichess_import.fetch_games',return_value=[item]):
+            loaded=self.post('/api/submissions/inspect',data,member,csrf)
+        self.assertEqual(loaded.status_code,200,loaded.json)
+        selected={'token':loaded.json['token'],'selected':['abcdefgh'],'consent':True}
+        self.assertEqual(self.post('/api/lichess/preview',selected,member,csrf).status_code,403)
+        self.assertEqual(self.post('/api/submissions',selected,member,csrf).status_code,200)
+        with patch('lichess_import.fetch_games',return_value=[item]):
+            loaded=self.post('/api/submissions/inspect',data)
+        before=[(p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
+        preview=self.post('/api/lichess/preview',{**selected,'token':loaded.json['token']})
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(before,[(p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']])
+        self.assertEqual(self.post('/api/import/commit',{'token':preview.json['token']}).status_code,200)
+        self.assertEqual(len(self.client.get('/api/submissions').json['submissions']),1)
+
     def test_pwa_boot_assets_are_public_but_club_data_requires_login(self):
         anonymous=self.app.test_client()
         with anonymous.get('/sw.js') as response:

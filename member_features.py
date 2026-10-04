@@ -159,8 +159,18 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
     @app.post('/api/submissions/inspect')
     def inspect_submission():
         check_limit('submission-load:'+str(g.user['id']),10)
-        payload,note=validate_submission(fields(),db())
-        items=lichess_import.fetch_match(payload['first'],payload['second'],payload['day'])
+        data=fields()
+        link=data.get('link','')
+        if link:
+            if not isinstance(link,str) or len(link.split())!=1: raise ValueError('Einen einzelnen Partielink eingeben')
+            if data.get('consent') is not True: raise ValueError('Zustimmung beider Spieler bestätigen')
+            items=lichess_import.fetch_games(link.strip())
+            item=items[0]
+            data={**data,'mode':'match','day':item['round_dates'][0],'first':item['parsed']['players'][0]['name'][9:],'second':item['parsed']['players'][1]['name'][9:]}
+            payload,note=validate_submission(data,db())
+        else:
+            payload,note=validate_submission(data,db())
+            items=lichess_import.fetch_match(payload['first'],payload['second'],payload['day'])
         token=secrets.token_urlsafe(32)
         with db():
             db().execute('DELETE FROM previews WHERE expires<?',(time.time(),))

@@ -427,9 +427,13 @@ def create_app(config=None):
         if not row:
             raise ValueError("Partieprüfung abgelaufen. Bitte Links erneut prüfen")
         payload = json.loads(row["payload"])
-        if payload.get("kind") != "lichess-inspect":
+        if payload.get("kind") not in ("lichess-inspect","member-match"):
             raise ValueError("Partieprüfung fehlt")
-        mapping = data.get("mapping")
+        if payload.get("kind")=="member-match":
+            proposed=payload['payload']
+            mapping={player['name']:proposed['first_player'] if storage.normalize(player['name'])==storage.normalize('Lichess: '+proposed['first']) else proposed['second_player'] for item in payload['items'] for player in item['parsed']['players']}
+        else:
+            mapping = data.get("mapping")
         if not isinstance(mapping,dict):
             raise ValueError("Spieler zuordnen")
         selected = data.get("selected")
