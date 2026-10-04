@@ -303,13 +303,34 @@ $('#reset-form').addEventListener('submit', event => {
     const me = await api('/api/me'); user = me.user; csrf = me.csrf; refreshAuth(); await navigate();
   });
 });
+const epLabels = {games:'Partien',events:'Am Vereinsbrett',weeks:'Aktive Wochen',encounters:'Verschiedene Gegner'};
+function progressBar(value, max, label) {
+  return `<progress value="${value}" max="${max}" aria-label="${escapeHtml(label)}"></progress>`;
+}
+async function loadProgress() {
+  const target = $('#progress-content');
+  target.innerHTML = '<p>Dein Vereinsweg wird geladen …</p>';
+  const data = await api('/api/progression');
+  const p = data.personal, c = data.community;
+  let hide = false;
+  try { hide = localStorage.getItem('hide-progression-'+user.id) === 'yes'; } catch (_) { /* Optional device preference. */ }
+  $('#hide-progress').checked = hide;
+  target.hidden = hide;
+  target.innerHTML = p ? `<div class="card level-card"><div class="eyebrow">${escapeHtml(p.player.name)}</div><h2>Vereinslevel ${p.level}</h2><p>Etappe ${p.stage} · Stufe ${p.stage_level} von 10</p>${progressBar(p.progress,p.next_level_ep,'Fortschritt zum nächsten Vereinslevel')}<p><strong>${p.progress} / ${p.next_level_ep} EP</strong> · noch ${p.remaining} EP bis Level ${p.level+1}</p><p class="muted">${p.ep} EP insgesamt. Pausen kosten keinen Fortschritt.</p><button class="button secondary" data-player="${p.player.player_id}" type="button">Deine Schachwertung ansehen</button></div><h2>Deine Meilensteine</h2><div class="badge-grid">${p.badges.map(b=>`<article class="card"><h3>${escapeHtml(b.name)}</h3><strong>${b.value}</strong><p>${b.achieved.length ? 'Erreicht: '+b.achieved.join(' · ') : 'Dein erster Meilenstein wartet auf dich.'}</p>${b.next ? progressBar(Math.min(b.value,b.next),b.next,b.name)+`<p class="muted">Nächster Meilenstein: ${b.next}</p>` : '<p>Alle Meilensteine dieser Reihe erreicht.</p>'}</article>`).join('')}</div><details class="card"><summary>Deine EP im Detail</summary><dl class="ep-breakdown">${Object.entries(p.breakdown).map(([k,v])=>`<div><dt>${epLabels[k]}</dt><dd>${v} EP</dd></div>`).join('')}</dl><h3>Letzte Spieltage</h3>${p.recent.length ? p.recent.map(d=>`<div class="ep-day"><strong>${formatDate(d.date)}</strong><span>${d.count} Partien · ${d.ep} EP</span><small>${Object.entries(epLabels).filter(([k])=>d[k]).map(([k,label])=>`${label}: ${d[k]} EP`).join(' · ') || 'Tagesgrenze erreicht; Partien zählen weiterhin für Abzeichen.'}</small></div>`).join('') : '<p>Nach deiner ersten gewerteten Partie erscheint hier dein Fortschritt.</p>'}</details>` : empty('Dein Mitgliedskonto verbinden','Dieser Zugang ist keinem vorbereiteten Vereinsmitglied zugeordnet. Bitte nutze deinen persönlichen Mitgliedszugang oder wende dich an die Administration.');
+  $('#community-progress').innerHTML = `<h2>Gemeinsam am Brett</h2><p>${escapeHtml(c.month)} · <strong>${c.games} gewertete Vereinspartien</strong></p>${progressBar(c.games,c.milestone,'Gemeinsam gespielte Vereinspartien')}<p>Nächster gemeinsamer Meilenstein: ${c.milestone} Partien. Jede Partie zählt einmal – online und vor Ort.</p><p class="muted">Ein gemeinsamer Fortschritt, ohne Verpflichtung oder Vergleich zwischen Mitgliedern.</p>`;
+}
+$('#hide-progress').addEventListener('change', event => {
+  $('#progress-content').hidden = event.target.checked;
+  try { localStorage.setItem('hide-progression-'+user.id,event.target.checked?'yes':'no'); } catch (_) { /* Still hide for this session. */ }
+});
 async function navigate() {
   let page = location.hash.slice(1) || 'rankings';
-  if (!['rankings','tournaments','import','submissions','help','admin'].includes(page)) page = 'rankings';
+  if (!['progress','rankings','tournaments','import','submissions','help','admin'].includes(page)) page = 'rankings';
   if ((page === 'import' && !['director', 'admin'].includes(user?.role)) || (page === 'admin' && user?.role !== 'admin')) { page = 'rankings'; location.hash = '#rankings'; }
   $$('.page').forEach(el => { el.hidden = el.id !== 'page-' + page; });
   $$('.nav a').forEach(el => { el.classList.toggle('active', el.dataset.page === page); if (el.dataset.page === page) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   try {
+    if (page === 'progress') await loadProgress();
     if (page === 'rankings') await loadRanks();
     if (page === 'tournaments') await loadTournaments();
     if (page === 'admin') await loadAdmin();

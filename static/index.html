@@ -8,9 +8,9 @@
   <title>SK1912 Ludwigshafen · Vereinswertung</title>
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="/static/manifest.webmanifest">
-  <link rel="stylesheet" href="/static/style.css?v=1.19">
-  <script src="/static/app.js?v=1.19" defer></script>
-<link rel="apple-touch-icon" href="/static/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SK1912 Wertung"><script src="/static/pwa.js?v=1.19" defer></script></head>
+  <link rel="stylesheet" href="/static/style.css?v=1.20">
+  <script src="/static/app.js?v=1.20" defer></script>
+<link rel="apple-touch-icon" href="/static/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SK1912 Wertung"><script src="/static/pwa.js?v=1.20" defer></script></head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt</a>
   <header class="header">
@@ -19,6 +19,7 @@
   </header>
   <div class="shell">
     <nav class="nav" aria-label="Hauptnavigation">
+      <a href="#progress" data-page="progress" class="auth-only" hidden>Mein Weg</a>
       <a href="#rankings" data-page="rankings">Ranglisten</a>
       <a href="#tournaments" data-page="tournaments">Turniere</a>
       <a href="#import" data-page="import" class="director-only" hidden>Importieren</a>
@@ -27,6 +28,19 @@
       <a href="#admin" data-page="admin" class="admin-only" hidden>Zugänge</a>
     </nav>
     <main id="main" tabindex="-1">
+      <section id="page-progress" class="page" hidden>
+        <div class="eyebrow">DEIN SCHACH IM VEREIN</div><h1>Schritt für Schritt.</h1>
+        <p class="lead">Spielen, begegnen, dabei sein. Dein Level zeigt deine Aktivität – deine Schachwertung bleibt davon unabhängig.</p>
+        <label class="check-label"><input id="hide-progress" type="checkbox"> Persönliche Levelanzeige auf diesem Gerät ausblenden</label>
+        <div id="progress-content" aria-live="polite"></div>
+        <div id="community-progress" class="card"></div>
+        <details class="card"><summary>So sammelst du Erfahrungspunkte</summary>
+          <p>Sieg, Remis und Niederlage zählen gleich viel. Nur genehmigte, aktive Wertungspartien zählen. Blitz und Schnellschach teilen sich ein Vereinslevel.</p>
+          <ul><li>Partien: je 50 EP für die ersten fünf pro Tag, danach je 10 EP für zehn weitere. Weitere Partien zählen für Abzeichen.</li><li>Vereinsbrett: 150 EP pro Spieltag mit einer gewerteten TRF-Partie. Mehrere Turniere am selben Tag geben einen Teilnahmebonus.</li><li>Regelmäßigkeit: 100 EP für den ersten Spieltag jeder Kalenderwoche.</li><li>Begegnungen: 50 EP pro unterschiedlichem Gegner im Monat, für höchstens zehn Gegner.</li></ul>
+          <p>Je 1.000 EP erreichst du ein neues Level. Zehn Level bilden eine Etappe. Es gibt keine Obergrenze und keinen Verfall bei Pausen. Vorhandene Partien zählen rückwirkend. Zurückgenommene Importe werden aus dem Fortschritt entfernt. Maßgeblich ist das Partiedatum in der Zeitzone Europe/Berlin.</p>
+          <p>Deine Level und Abzeichen sind nur in deiner persönlichen Ansicht sichtbar. Es gibt keine EP-Rangliste. Vereinsbrett-Boni setzen voraus, dass TRF-Importe tatsächlich Veranstaltungen vor Ort abbilden.</p>
+        </details>
+      </section>
       <section id="page-rankings" class="page">
         <div class="eyebrow">VEREINSINTERN · GLICKO-2</div>
         <div class="page-heading"><div><h1>Jede Partie zählt.</h1><p class="lead">Die Spielstärke entwickelt sich am Brett.<br>Hier wird sie sichtbar.</p></div><span class="hero-piece" aria-hidden="true">♜</span></div>

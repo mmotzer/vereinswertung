@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.19 .
+   docker build -t vereinswertung:1.20 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.19` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.20` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -122,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.19 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.20 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen
@@ -188,3 +188,6 @@ Die Turnierleitung wählt „Partien prüfen“, lädt die gemeinsamen Partien v
 ### Vorbereitete Vereinskonten
 
 Eine private `club-roster.json` im Deployment enthält nur `name` und vierstellige `club_number`. Sie wird nicht im öffentlichen Quellarchiv veröffentlicht. Beim ersten Start werden vorhandene Spieler samt Wertungen zugeordnet und gesperrte Mitgliedskonten angelegt; vorher wird eine Datenbanksicherung erstellt. Wiederholte Starts legen keine weiteren Konten an. Unter **Zugänge** wählt der Administrator einen Spieler und erstellt dessen persönlichen, sieben Tage gültigen Einmalcode. Das Mitglied übernimmt damit seinen vorbereiteten Zugang und wählt Benutzername und Passwort selbst. Ein neuer Code ersetzt einen noch offenen alten Code. DWZ und Elo werden nicht übernommen.
+
+## Persönlicher Vereinsweg
+Unter „Mein Weg“ sieht jedes verknüpfte Mitglied ausschließlich seine eigenen EP, unbegrenzte Level (1.000 EP pro Level), Etappen und fünf Abzeichenreihen. Berechnung aus aktiven Partien, ohne Änderung der Glicko-Wertung. 50 EP für die ersten fünf Tagespartien, 10 EP für die nächsten zehn; 150 EP je TRF-Spieltag, 100 EP je aktiver ISO-Woche und 50 EP je Monatsgegner (maximal zehn). Europe/Berlin gilt für Tagesgrenzen. TRF wird als Veranstaltung vor Ort behandelt. Import-Rücknahmen und historische Nachimporte werden automatisch berücksichtigt. Die persönliche Anzeige lässt sich pro Konto auf dem Gerät ausblenden. Gemeinsamer Monatsfortschritt zählt jede Partie mit mindestens einem hinterlegten Vereinsmitglied einmal. Keine EP-Rangliste und keine Prestige-Rücksetzung.

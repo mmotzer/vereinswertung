@@ -27,6 +27,7 @@ import trf
 import lichess_import
 import member_features
 import club_roster
+import progression
 
 ROOT = Path(__file__).resolve().parent
 
@@ -319,6 +320,10 @@ def create_app(config=None):
                 name = "'" + name
             writer.writerow([name, p["display"], round(p["rd"], 2), p["volatility"], p["games"], "Ja" if p["provisional"] else "Nein"])
         return send_file(io.BytesIO(("\ufeff" + stream.getvalue()).encode()), mimetype="text/csv", as_attachment=True, download_name=f"vereinswertung-{cat}.csv")
+
+    @app.get("/api/progression")
+    def activity_progress():
+        return jsonify(personal=progression.personal(db(), g.user['id']), community=progression.community(db()))
 
     @app.get("/api/players/<int:pid>")
     def player(pid):
@@ -672,7 +677,7 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
@@ -681,7 +686,7 @@ def public_source_files():
     names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
         "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
-        "tests/test_app.py", "tests/test_rating.py", "tests/browser_fixture.py",
+        "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/browser_fixture.py",
         "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
     names += [str(p.relative_to(ROOT)) for p in (ROOT / "reference").rglob("*.scala")]
     return [ROOT / name for name in names if (ROOT / name).is_file() and not (ROOT / name).is_symlink()]

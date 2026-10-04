@@ -72,6 +72,20 @@ class ParserTests(unittest.TestCase):
 
 
 class AppTests(unittest.TestCase):
+    def test_personal_progression_is_private_and_undo_aware(self):
+        self.assertEqual(self.app.test_client().get('/api/progression').status_code,401)
+        self.assertIsNone(self.client.get('/api/progression').json['personal'])
+        tid=self.commit(self.payload())
+        with storage.open_db(self.path) as db:
+            pid=db.execute("SELECT id FROM players WHERE name='Alpha, Anna'").fetchone()[0]
+            uid=db.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
+            db.execute('INSERT INTO club_members(player_id,user_id,club_number) VALUES(?,?,?)',(pid,uid,'test'))
+        p=self.client.get('/api/progression?player_id=999').json['personal']
+        self.assertEqual(p['player']['player_id'],pid)
+        self.assertEqual(p['ep'],350)
+        self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'})
+        self.assertEqual(self.client.get('/api/progression').json['personal']['ep'],0)
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
         self.path=str(Path(self.tmp.name)/'club.sqlite')
