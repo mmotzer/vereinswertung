@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS previews(
 CREATE TABLE IF NOT EXISTS audit(
  id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id),
  action TEXT NOT NULL, detail TEXT NOT NULL, created REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS history_player ON history(player_id,game_id);
+CREATE INDEX IF NOT EXISTS games_tournament ON games(tournament_id,round,id);
 """
 
 

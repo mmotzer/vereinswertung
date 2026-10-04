@@ -2,15 +2,13 @@
 import tarfile
 import zipfile
 
-from app import ROOT, SOURCE_FILES
+from app import ROOT, public_source_files
 
 
 def main():
     folder=ROOT/'artifacts'
     folder.mkdir(exist_ok=True)
-    files=[ROOT/name for name in SOURCE_FILES if (ROOT/name).is_file()]
-    for name in ('static','reference','tests','docs'):
-        files.extend(p for p in (ROOT/name).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
+    files = public_source_files()
     with zipfile.ZipFile(folder/'vereinswertung-nas.zip','w',zipfile.ZIP_DEFLATED) as archive:
         for p in files:archive.write(p,p.relative_to(ROOT))
     with tarfile.open(folder/'vereinswertung-build.tar.gz','w:gz') as archive:

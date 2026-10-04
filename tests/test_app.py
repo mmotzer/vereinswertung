@@ -220,6 +220,44 @@ class AppTests(unittest.TestCase):
             self.assertFalse(any(n.startswith('data/') or n.endswith('.sqlite') for n in z.namelist()))
         self.assertEqual(self.app.test_client().get('/api/backup').status_code,403)
 
+    def test_valid_password_survives_failed_attempts(self):
+        anonymous = self.app.test_client()
+        for _ in range(11):
+            self.post('/api/login', {'username': 'admin', 'password': 'wrong'}, client=anonymous)
+        self.assertEqual(self.post('/api/login', {'username': 'admin', 'password': 'long-password-for-test'}, client=anonymous).status_code, 200)
+
+    def test_setup_valid_token_survives_invalid_attempts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            app = create_app({'DATABASE': str(Path(folder)/'fresh.sqlite'), 'BOOTSTRAP_TOKEN': 'test-bootstrap-key-long-enough-123', 'SECURE_COOKIE': False})
+            client = app.test_client()
+            for _ in range(11):
+                self.post('/api/setup', {'token': 'wrong'}, client=client)
+            result = self.post('/api/setup', {'token': 'test-bootstrap-key-long-enough-123', 'username': 'firstadmin', 'password': 'long-password-for-test'}, client=client)
+            self.assertEqual(result.status_code, 200)
+
+    def test_public_tournament_hides_login_name(self):
+        tid = self.commit(self.payload())
+        self.assertNotIn('director', self.app.test_client().get(f'/api/tournaments/{tid}').json)
+        self.assertEqual(self.client.get(f'/api/tournaments/{tid}').json['director'], 'admin')
+
+    def test_source_excludes_private_review_document(self):
+        with zipfile.ZipFile(io.BytesIO(self.client.get('/source.zip').data)) as archive:
+            self.assertNotIn('docs/PRUEFUNG.md', archive.namelist())
+            self.assertNotIn('compose.nas-existing-tunnel.yaml', archive.namelist())
+
+    def test_forwarded_ip_is_ignored_without_trusted_proxy(self):
+        anonymous = self.app.test_client()
+        for i in range(11):
+            result = anonymous.post('/api/login', json={'username': 'missing', 'password': 'wrong'}, headers={'Origin': 'http://localhost', 'CF-Connecting-IP': f'192.0.2.{i+1}'})
+        self.assertEqual(result.status_code, 429)
+
+    def test_trusted_proxy_separates_clients(self):
+        self.app.config['TRUSTED_PROXY_IPS'] = '127.0.0.1'
+        anonymous = self.app.test_client()
+        for i in range(11):
+            result = anonymous.post('/api/login', json={'username': 'missing', 'password': 'wrong'}, headers={'Origin': 'http://localhost', 'CF-Connecting-IP': f'192.0.2.{i+1}'})
+            self.assertEqual(result.status_code, 401)
+
     def test_login_lockout_and_no_second_setup(self):
         anonymous=self.app.test_client()
         for _ in range(10):

@@ -3,6 +3,7 @@ import base64
 import csv
 import hashlib
 import io
+import ipaddress
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import threading
 import time
 import zipfile
 from contextlib import closing
+from functools import lru_cache
 from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, request, send_file, send_from_directory
@@ -42,12 +44,33 @@ def create_app(config=None):
                       BOOTSTRAP_TOKEN=os.environ.get("BOOTSTRAP_TOKEN", ""),
                       SECURE_COOKIE=os.environ.get("SECURE_COOKIE", "true").lower() == "true",
                       PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN", "").rstrip("/"),
+                      TRUSTED_PROXY_IPS=os.environ.get("TRUSTED_PROXY_IPS", ""),
                       MAX_CONTENT_LENGTH=3 * 1024 * 1024)
     if config:
         app.config.update(config)
     if len(app.config["BOOTSTRAP_TOKEN"]) < 24:
         raise RuntimeError("BOOTSTRAP_TOKEN mit mindestens 24 Zeichen setzen (siehe README)")
     storage.initialize(app.config["DATABASE"])
+    password_slots = threading.BoundedSemaphore(2)
+
+    def client_address():
+        peer = request.remote_addr or "unknown"
+        trusted = {p.strip() for p in app.config["TRUSTED_PROXY_IPS"].split(",") if p.strip()}
+        if peer in trusted:
+            try:
+                return str(ipaddress.ip_address(request.headers.get("CF-Connecting-IP", "")))
+            except ValueError:
+                pass
+        return peer
+
+    def verify_password(candidate, password):
+        if not password_slots.acquire(blocking=False):
+            from werkzeug.exceptions import TooManyRequests
+            raise TooManyRequests("Anmeldung ausgelastet. Bitte kurz warten und erneut versuchen.")
+        try:
+            return check_password_hash(candidate, password)
+        finally:
+            password_slots.release()
 
     def db():
         if "db" not in g:
@@ -158,8 +181,10 @@ def create_app(config=None):
     @app.post("/api/setup")
     def setup():
         data = fields()
-        check_limit("setup", 10)
+        if db().execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            raise ValueError("Die App ist bereits eingerichtet")
         if not isinstance(data.get("token"), str) or not secrets.compare_digest(data["token"], app.config["BOOTSTRAP_TOKEN"]):
+            check_limit("setup:" + client_address(), 10)
             return jsonify(error="Einrichtungsschlüssel ungültig"), 403
         username, password = credentials(data)
         hashed = generate_password_hash(password)
@@ -182,13 +207,13 @@ def create_app(config=None):
         username, password = data.get("username", ""), data.get("password", "")
         if not isinstance(username, str) or not isinstance(password, str) or len(username) > 50 or len(password) > 200:
             raise ValueError("Ungültige Zugangsdaten")
-        key = "login:" + hashlib.sha256(username.casefold().strip().encode()).hexdigest()
-        check_limit(key)
-        check_limit("ip:" + str(request.remote_addr), 150)
+        key = "login:" + hashlib.sha256((client_address() + ":" + username.casefold().strip()).encode()).hexdigest()
         user = db().execute("SELECT * FROM users WHERE username=? AND active=1", (username.strip(),)).fetchone()
         # Same scrypt cost for unknown accounts, without revealing account existence.
         candidate = user["password"] if user else app.config["DUMMY_PASSWORD"]
-        if not check_password_hash(candidate, password) or not user:
+        # Failed attempts must never lock out a holder of valid credentials.
+        if not verify_password(candidate, password) or not user:
+            check_limit(key)
             return jsonify(error="Benutzername oder Passwort falsch"), 401
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with db():
@@ -285,6 +310,8 @@ def create_app(config=None):
         if not detail["active"] and (not g.user or (g.user["role"] != "admin" and detail["owner"] != g.user["id"])):
             from werkzeug.exceptions import Forbidden
             raise Forbidden()
+        if not g.user:
+            detail.pop("director", None)
         return jsonify(detail)
 
     def upload(data):
@@ -308,6 +335,7 @@ def create_app(config=None):
 
     @app.post("/api/import/preview")
     def preview():
+        check_limit("preview:" + str(g.user["id"]), 60)
         data = fields()
         text, parsed = upload(data)
         filename = data.get("filename", "Turnier.trf")
@@ -335,6 +363,9 @@ def create_app(config=None):
             db().execute("RELEASE simulation")
             token = secrets.token_urlsafe(32)
             db().execute("DELETE FROM previews WHERE expires<?", (time.time(),))
+            db().execute("""DELETE FROM previews WHERE owner=? AND token NOT IN
+                (SELECT token FROM previews WHERE owner=? ORDER BY expires DESC LIMIT 4)""",
+                (g.user["id"], g.user["id"]))
             db().execute("INSERT INTO previews VALUES(?,?,?,?,?)", (token, g.user["id"], rev, json.dumps(payload), time.time() + 1800))
             db().commit()
         except Exception:
@@ -447,25 +478,31 @@ def create_app(config=None):
 
     @app.get("/source.zip")
     def source():
-        # AGPL source offer: explicit allowlist, never include runtime data/secrets.
+        return send_file(io.BytesIO(source_archive()), mimetype="application/zip", as_attachment=True, download_name="vereinswertung-quellcode.zip")
+
+    @lru_cache(maxsize=1)
+    def source_archive():
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as z:
-            for filename in SOURCE_FILES:
-                path = ROOT / filename
-                if path.is_file():
-                    z.write(path, filename)
-            for folder in ("static", "reference", "tests", "docs"):
-                for path in (ROOT / folder).rglob("*"):
-                    if path.is_file() and "__pycache__" not in path.parts:
-                        z.write(path, path.relative_to(ROOT))
-        output.seek(0)
-        return send_file(output, mimetype="application/zip", as_attachment=True, download_name="vereinswertung-quellcode.zip")
+            for path in public_source_files():
+                z.write(path, path.relative_to(ROOT))
+        return output.getvalue()
 
     return app
 
 
 SOURCE_FILES = ["app.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
+
+
+def public_source_files():
+    """Publish only known source paths, never arbitrary files added to folders."""
+    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
+        "static/style.css", "static/icon.svg", "static/manifest.webmanifest",
+        "tests/test_app.py", "tests/test_rating.py", "tests/browser_fixture.py",
+        "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
+    names += [str(p.relative_to(ROOT)) for p in (ROOT / "reference").rglob("*.scala")]
+    return [ROOT / name for name in names if (ROOT / name).is_file() and not (ROOT / name).is_symlink()]
 
 
 def backup_database(database):
