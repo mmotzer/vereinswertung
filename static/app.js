@@ -326,6 +326,7 @@ function displayLichess(info) {
   $('#lichess-games').innerHTML = info.games.map(g => `<label class="check-label"><input type="checkbox" data-lichess-game="${escapeHtml(g.external_id)}" checked> ${escapeHtml(g.name)} · ${catName(g.category)} · ${new Date(g.played*1000).toLocaleString('de-DE')} · ${escapeHtml(g.parsed.players[0].name)} – ${escapeHtml(g.parsed.players[1].name)} · ${resultLabel(g.parsed.games[0].score)}</label>`).join('');
   $('#lichess-assignments').innerHTML = info.assignments.map(a => `<label>${escapeHtml(a.name)}<select data-lichess-player="${escapeHtml(a.name)}" ${a.player_id ? 'disabled' : ''}><option value="">Vereinsspieler auswählen</option>${info.players.map(p => `<option value="${p.id}" ${p.id===a.player_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select></label>`).join('');
   $('#lichess-mapping-form').hidden = false;
+  $('#lichess-mapping-form').scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 for (const form of ['lichess-links-form','lichess-match-form']) {
   $('#'+form).addEventListener('input', () => { invalidateLichess(); lichessInfo = null; $('#lichess-mapping-form').hidden = true; });
@@ -350,6 +351,7 @@ $('#lichess-mapping-form').addEventListener('submit', event => {
     if (generation !== lichessGeneration) return;
     $('#lichess-preview').innerHTML = `<h2>${preview.count} Partien gemeinsam speichern</h2>${changesTable(preview.changes.map(c => ({...c,name:c.name+' · '+catName(c.category)})))}<p>Auch Änderungen an späteren Wertungen sind in dieser Vorschau enthalten.</p><button id="lichess-save" class="button">Import bestätigen →</button>`;
     $('#lichess-preview').hidden = false;
+    $('#lichess-preview').scrollIntoView({behavior: 'smooth', block: 'start'});
     $('#lichess-save').addEventListener('click', event => busy(event.currentTarget, async () => {
       if (generation !== lichessGeneration) throw new Error('Angaben geändert. Bitte neue Vorschau erstellen.');
       await api('/api/import/commit', {token:preview.token});
