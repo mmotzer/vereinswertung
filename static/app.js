@@ -18,6 +18,7 @@ async function api(path, body) {
     options.body = JSON.stringify(body);
   }
   const response = await fetch(path, options);
+  if (response.status === 401 && user) { location.reload(); throw new Error('Bitte erneut anmelden'); }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen');
   return data;
@@ -109,6 +110,7 @@ $('#auth-form').addEventListener('submit', async event => {
 });
 $('#logout-button').addEventListener('click', event => busy(event.currentTarget, async () => {
   await api('/api/logout', {});
+  location.reload();
   user = null; csrf = null; previewToken = null; importData = null;
   $('#account-dialog').close();
   $('#import-form').hidden = true; $('#import-preview').hidden = true;
@@ -303,6 +305,7 @@ window.addEventListener('hashchange', navigate);
 (async () => {
   try {
     const me = await api('/api/me'); user = me.user; csrf = me.csrf; needsSetup = me.needs_setup;
+    if (!user) { location.reload(); return; }
     refreshAuth(); await navigate();
   } catch (error) { toast('Verbindung zur App fehlgeschlagen: ' + error.message, true); }
 })();

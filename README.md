@@ -3,7 +3,7 @@
 Mobile Web-App für vereinsinterne Blitz- und Schnellschachwertungen auf einem NAS.
 SWISS-CHESS exportiert TRF; diese App importiert die Partien und berechnet
 Glicko-2 nach festgelegten Lichess-Quellen. Alle beginnen bei 1500. DWZ/Elo bleiben
-unberücksichtigt. Öffentliche Ranglisten, persönliche Turnierleiter-Zugänge,
+unberücksichtigt. Geschützte Ranglisten, persönliche Turnierleiter-Zugänge,
 Importvorschau, Rücknahme, Spielerprofile, CSV und Datenbanksicherungen.
 
 ## Lokal starten (Windows)
@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.1 .
+   docker build -t vereinswertung:1.2 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.1` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.2` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -62,8 +62,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 Die Einrichtung ist nur möglich, solange noch kein Konto existiert. Danach kann
 BOOTSTRAP_TOKEN durch einen anderen zufälligen Wert ersetzt werden. Er wird
 beim Start weiterhin benötigt, erlaubt aber keine erneute Einrichtung.
-Die Ranglisten bleiben öffentlich; kein Cloudflare-Access-Login vor der gesamten
-App erforderlich. Import und Verwaltung sind durch die App geschützt.
+Die gesamte App erfordert eine Anmeldung. Ohne gültige Sitzung werden keine
+Ranglisten, Spielerprofile, Turnierdaten oder CSV-Exporte ausgegeben, auch nicht
+über direkte API-Aufrufe. Öffentlich bleiben nur Anmeldeoberfläche, statische
+Dateien und der Status-Endpunkt (ohne Vereinsdaten). Die App-Konten übernehmen
+den Schutz; ein zusätzlicher Cloudflare-Access-Login ist nicht erforderlich.
 
 ## Import und Zeitregel
 
@@ -119,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.1 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.2 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen

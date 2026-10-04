@@ -165,7 +165,7 @@ class AppTests(unittest.TestCase):
 
     def test_rights_csrf_and_disabled_accounts(self):
         anonymous=self.app.test_client()
-        self.assertEqual(anonymous.get('/api/rankings').status_code,200)
+        self.assertEqual(anonymous.get('/api/rankings').status_code,401)
         self.assertEqual(self.post('/api/import/inspect',self.payload(),client=anonymous).status_code,401)
         self.assertEqual(self.post('/api/users',{},csrf='wrong').status_code,403)
         self.assertEqual(self.client.post('/api/users',json={},headers={'Origin':'https://evil.test','X-CSRF-Token':self.csrf}).status_code,403)
@@ -218,7 +218,21 @@ class AppTests(unittest.TestCase):
             self.assertIn('LICENSE',z.namelist())
             self.assertNotIn('.env',z.namelist())
             self.assertFalse(any(n.startswith('data/') or n.endswith('.sqlite') for n in z.namelist()))
-        self.assertEqual(self.app.test_client().get('/api/backup').status_code,403)
+        self.assertEqual(self.app.test_client().get('/api/backup').status_code,401)
+
+    def test_entire_site_requires_login(self):
+        self.commit(self.payload())
+        client = self.app.test_client()
+        self.assertIn(b'private-login', client.get('/').data)
+        self.assertNotIn(b'ranking-list', client.get('/').data)
+        for path in ['/api/rankings', '/api/export.csv', '/api/players/1', '/api/tournaments', '/api/tournaments/1', '/api/users', '/api/audit', '/api/backup', '/source.zip']:
+            self.assertEqual(client.get(path).status_code, 401, path)
+            self.assertEqual(client.head(path).status_code, 401, path)
+        self.assertEqual(client.get('/static/index.html').status_code, 302)
+        self.assertEqual(client.get('/api/health').status_code, 200)
+        self.login('admin', client)
+        self.assertEqual(client.get('/api/rankings').status_code, 200)
+        self.assertNotIn(b'private-login', client.get('/').data)
 
     def test_valid_password_survives_failed_attempts(self):
         anonymous = self.app.test_client()

@@ -17,7 +17,7 @@ from contextlib import closing
 from functools import lru_cache
 from urllib.parse import urlparse
 
-from flask import Flask, g, jsonify, request, send_file, send_from_directory
+from flask import Flask, g, jsonify, request, send_file, send_from_directory, redirect
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -94,6 +94,11 @@ def create_app(config=None):
             if row:
                 g.session = row
                 g.user = {"id": row["user_id"], "username": row["username"], "role": row["role"]}
+        if not g.user and request.method in ("GET", "HEAD"):
+            if request.path == "/static/index.html":
+                return redirect("/")
+            if (request.path.startswith("/api/") and request.path not in ("/api/me", "/api/health")) or request.path == "/source.zip":
+                return jsonify(error="Bitte anmelden"), 401
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             origin = request.headers.get("Origin", "")
             expected = app.config["PUBLIC_ORIGIN"]
@@ -118,7 +123,7 @@ def create_app(config=None):
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.path.startswith("/api/"):
+        if request.path.startswith("/api/") or request.path in ("/", "/static/index.html", "/source.zip"):
             response.headers["Cache-Control"] = "no-store"
         if app.config["SECURE_COOKIE"]:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -166,7 +171,7 @@ def create_app(config=None):
 
     @app.get("/")
     def index():
-        return send_from_directory(ROOT / "static", "index.html")
+        return send_from_directory(ROOT / "static", "index.html" if g.user else "login.html")
 
     @app.get("/api/health")
     def health():
@@ -498,7 +503,7 @@ SOURCE_FILES = ["app.py", "storage.py", "rating.py", "trf.py", "manage.py", "req
 def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
     names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
-        "static/style.css", "static/icon.svg", "static/manifest.webmanifest",
+        "static/style.css", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/browser_fixture.py",
         "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
     names += [str(p.relative_to(ROOT)) for p in (ROOT / "reference").rglob("*.scala")]
