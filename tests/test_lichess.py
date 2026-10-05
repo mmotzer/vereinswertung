@@ -13,6 +13,9 @@ def exported(gid='abcdefgh', speed='blitz'):
 
 
 class LichessTests(unittest.TestCase):
+    def test_bullet_is_supported(self):
+        self.assertEqual(lichess_import.parse_game(exported(speed='bullet'))['category'],'bullet')
+
     def test_url_host_and_duplicate_normalization(self):
         with patch('urllib.request.urlopen',return_value=io.BytesIO(json.dumps(exported()).encode())) as request:
             games=lichess_import.fetch_games('https://lichess.org/abcdefgh1234/black#10 https://lichess.org/abcdefgh')
@@ -22,7 +25,7 @@ class LichessTests(unittest.TestCase):
             with self.assertRaises(ValueError): lichess_import.fetch_games(url)
 
     def test_invalid_game_types(self):
-        for change in [{'variant':'chess960'},{'speed':'bullet'},{'status':'started'},
+        for change in [{'variant':'chess960'},{'speed':'ultraBullet'},{'status':'started'},
                        {'players':{'white':{'user':{'name':'Anna','title':'BOT'}},'black':{'user':{'name':'Ben'}}}}]:
             with self.assertRaises(ValueError): lichess_import.parse_game({**exported(),**change})
 

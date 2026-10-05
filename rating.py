@@ -1,7 +1,7 @@
 """Python port of the pinned Lichess/scalachess Glicko calculation.
 
 See reference/versions.json and NOTICE.md for original code and licenses.
-Only human standard-chess blitz/rapid ratings are supported.
+Only human standard-chess bullet/blitz/rapid ratings are supported.
 """
 from dataclasses import dataclass, replace, asdict
 from math import exp, log, pi, sqrt
@@ -86,7 +86,7 @@ def compute_one(player: Rating, opponent: Rating, score: float,
 
 def regulate(before: Rating, after: Rating, category: str, timestamp: float) -> Rating:
     """Lila RatingRegulator and PerfExt.addOrReset/cap, for human players."""
-    factor = {"blitz": 1.005, "rapid": 1.015}[category]
+    factor = {"bullet": 1.010, "blitz": 1.005, "rapid": 1.015}[category]
     rating = after.rating
     if rating > before.rating:
         rating = before.rating + (rating - before.rating) * factor

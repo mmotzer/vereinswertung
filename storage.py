@@ -133,6 +133,7 @@ def initialize(path):
             bump(db)
         for alias in db.execute("SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"):
             db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(alias['player_id'],alias['name'][9:]))
+        db.execute("INSERT OR IGNORE INTO ratings SELECT id,'bullet',1500,500,0.09,0,NULL FROM players")
 
 
 @contextmanager
@@ -182,8 +183,8 @@ def timestamp(day):
 
 
 def validate_payload(payload):
-    if payload.get("category") not in ("blitz", "rapid"):
-        raise ValueError("Bitte Blitz oder Schnellschach auswählen")
+    if payload.get("category") not in ("bullet", "blitz", "rapid"):
+        raise ValueError("Bitte Bullet, Blitz oder Schnellschach auswählen")
     if not isinstance(payload.get("name"), str) or not 1 <= len(payload["name"].strip()) <= 120:
         raise ValueError("Turniername muss 1 bis 120 Zeichen haben")
     dates = payload.get("round_dates")
@@ -313,7 +314,7 @@ def rebuild(db):
                        (g["id"], pid, json.dumps(before.json()), json.dumps(after.json())))
         state[wkey], state[bkey] = nw, nb
     for p in db.execute("SELECT id FROM players"):
-        for cat in ("blitz", "rapid"):
+        for cat in ("bullet", "blitz", "rapid"):
             r = state.get((p["id"], cat), Rating())
             db.execute("INSERT INTO ratings VALUES(?,?,?,?,?,?,?)",
                        (p["id"], cat, r.rating, r.rd, r.volatility, r.games, r.latest))

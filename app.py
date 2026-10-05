@@ -301,7 +301,7 @@ def create_app(config=None):
     @app.get("/api/rankings")
     def rankings():
         cat = request.args.get("category", "blitz")
-        if cat not in ("blitz", "rapid"):
+        if cat not in ("bullet", "blitz", "rapid"):
             raise ValueError("Ungültige Kategorie")
         rows = storage.ranking(db(), cat)
         return jsonify(players=rows, revision=storage.revision(db()), engine=ENGINE_VERSION)
@@ -309,7 +309,7 @@ def create_app(config=None):
     @app.get("/api/export.csv")
     def export_csv():
         cat = request.args.get("category", "blitz")
-        if cat not in ("blitz", "rapid"):
+        if cat not in ("bullet", "blitz", "rapid"):
             raise ValueError("Ungültige Kategorie")
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=";")
@@ -330,7 +330,7 @@ def create_app(config=None):
         p = db().execute("SELECT id,name FROM players WHERE id=?", (pid,)).fetchone()
         if not p:
             raise ValueError("Spieler nicht gefunden")
-        ratings = {cat: next((r for r in storage.ranking(db(), cat) if r["id"] == pid), None) for cat in ("blitz", "rapid")}
+        ratings = {cat: next((r for r in storage.ranking(db(), cat) if r["id"] == pid), None) for cat in ("bullet", "blitz", "rapid")}
         history = []
         for h in db().execute("""SELECT h.before,h.after,g.round,g.score,g.white,g.played,
             t.id tournament_id,t.name,t.source,t.category,t.date,o.name opponent
@@ -457,11 +457,11 @@ def create_app(config=None):
         db().execute("BEGIN IMMEDIATE")
         try:
             db().execute("SAVEPOINT simulation")
-            before = {(r["id"],cat):r for cat in ("blitz","rapid") for r in storage.ranking(db(),cat)}
+            before = {(r["id"],cat):r for cat in ("bullet","blitz","rapid") for r in storage.ranking(db(),cat)}
             for item in payload["items"]:
                 storage.import_tournament(db(),item,g.user["id"])
             changes = []
-            for cat in ("blitz","rapid"):
+            for cat in ("bullet","blitz","rapid"):
                 for r in storage.ranking(db(),cat):
                     old = before[(r["id"],cat)]
                     if old["games"] != r["games"] or abs(old["rating"]-r["rating"]) > .000001:
@@ -500,11 +500,11 @@ def create_app(config=None):
             rev = storage.revision(db())
             # Entire simulated write/replay is rolled back. A preview changes no ratings.
             db().execute("SAVEPOINT simulation")
-            before = {(r["id"], cat): r for cat in ("blitz", "rapid") for r in storage.ranking(db(), cat)}
+            before = {(r["id"], cat): r for cat in ("bullet", "blitz", "rapid") for r in storage.ranking(db(), cat)}
             tid = storage.import_tournament(db(), payload, g.user["id"])
             detail = storage.tournament_detail(db(), tid)
             affected = []
-            for cat in ("blitz", "rapid"):
+            for cat in ("bullet", "blitz", "rapid"):
                 for row in storage.ranking(db(), cat):
                     prev = before.get((row["id"], cat))
                     if prev and (abs(prev["rating"] - row["rating"]) > 0.000001 or prev["games"] != row["games"]):

@@ -3,7 +3,7 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const roleName = role => ({admin:'Administrator',director:'Turnierleiter',member:'Vereinsmitglied'}[role] || role);
-const catName = cat => cat === 'blitz' ? 'Blitz' : 'Schnellschach';
+const catName = cat => ({bullet:'Bullet',blitz:'Blitz',rapid:'Schnellschach'}[cat] || cat);
 const formatDate = date => date ? new Date(date + 'T12:00:00Z').toLocaleDateString('de-DE') : '–';
 const signed = n => n > 0 ? '+' + n : String(n);
 const delta = n => `<span class="delta ${n > 0 ? 'positive' : n < 0 ? 'negative' : ''}">${signed(n)}</span>`;
@@ -207,7 +207,7 @@ async function showPlayer(id) {
     const coords = points.map((p, i) => `${15 + i / Math.max(1, points.length - 1) * 630},${140 - (p - min) / (max - min) * 115}`).join(' ');
     chart = `<svg class="chart" viewBox="0 0 660 160" role="img" aria-label="Wertungsverlauf ${catName(category)}, von 1500 auf ${points.at(-1)}"><polyline class="chart-line" points="${coords}"/></svg>`;
   }
-  $('#detail-content').innerHTML = `<div class="eyebrow">SPIELERPROFIL</div><h2>${escapeHtml(data.player.name)}</h2><div class="profile-ratings">${['blitz','rapid'].map(cat => {
+  $('#detail-content').innerHTML = `<div class="eyebrow">SPIELERPROFIL</div><h2>${escapeHtml(data.player.name)}</h2><div class="profile-ratings">${['bullet','blitz','rapid'].map(cat => {
     const r = data.ratings[cat];
     return `<div class="card"><span class="muted">${catName(cat)}</span><strong>${r?.display ?? 1500}${r?.provisional !== false ? '?' : ''}</strong><span class="muted">${r?.games ?? 0} Partien · RD ${(r?.rd ?? 500).toFixed(1)}</span></div>`;
   }).join('')}</div><h3>${catName(category)} · Wertungsverlauf</h3>${chart}${history.length ? `<div class="mobile-history">${history.map(h => `<article class="history-card"><div><strong>${escapeHtml(h.opponent)}</strong><small>${h.color} · ${formatDate(h.date)} · R${h.round}</small></div><div class="history-score"><span>Ergebnis ${h.result === .5 ? '½' : h.result}</span><strong>${h.after}</strong>${delta(h.diff)}</div><p>${escapeHtml(h.name)}</p></article>`).join('')}</div><div class="table-scroll profile-history-table"><table class="detail-table"><thead><tr><th>Turnier / Runde</th><th>Gegner</th><th>Ergebnis</th><th>Wertung</th></tr></thead><tbody>${history.map(h => `<tr><td>${escapeHtml(h.name)}<br><span class="muted">${formatDate(h.date)} · R${h.round}</span></td><td>${escapeHtml(h.opponent)}<br><span class="muted">${h.color}</span></td><td>${h.result === .5 ? '½' : h.result}</td><td>${h.after}<br>${delta(h.diff)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Noch keine gewerteten Partien in dieser Kategorie.</p>'}`;

@@ -56,3 +56,5 @@ html{scroll-padding-top:20px}body{min-height:100dvh}main,.card,.form-grid>*,.ass
 .ep-day{flex-wrap:wrap}.ep-day small{flex-basis:100%}
 #page-progress details summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-weight:600}
 @media(max-width:700px){.badge-grid{grid-template-columns:1fr}.nav[data-items="5"] a{flex-basis:30%}}
+
+@media(max-width:700px){.segments{flex-wrap:wrap}.segments button{min-width:0;padding-inline:8px;font-size:13px}.profile-ratings{grid-template-columns:1fr}}

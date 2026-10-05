@@ -21,7 +21,7 @@ def fetch_match(first, second, day):
         raise ValueError('Bitte einen gültigen Spieltag auswählen')
     params = urlencode({'vs':second,'since':int(start.timestamp()*1000),
         'until':int((start+timedelta(days=1)).timestamp()*1000)-1,'max':31,
-        'perfType':'blitz,rapid','finished':'true','ongoing':'false','moves':'false','clocks':'false'})
+        'perfType':'bullet,blitz,rapid','finished':'true','ongoing':'false','moves':'false','clocks':'false'})
     request = urllib.request.Request('https://lichess.org/api/games/user/'+first+'?'+params,
         headers={'Accept':'application/x-ndjson','User-Agent':'SK1912-Vereinswertung/1.7'})
     try:
@@ -39,7 +39,7 @@ def fetch_match(first, second, day):
     except (urllib.error.URLError,TimeoutError,json.JSONDecodeError):
         raise ValueError('Lichess derzeit nicht erreichbar. Bitte später erneut versuchen.')
     if not games:
-        raise ValueError('Keine gemeinsamen Blitz- oder Schnellschachpartien an diesem Tag gefunden')
+        raise ValueError('Keine gemeinsamen Bullet-, Blitz- oder Schnellschachpartien an diesem Tag gefunden')
     if len(games)>30:
         raise ValueError('Mehr als 30 Partien gefunden. Bitte stattdessen einzelne Links verwenden')
     expected={first.lower(),second.lower()}
@@ -77,8 +77,8 @@ def fetch_games(links):
 
 
 def parse_game(g):
-    if g.get('variant') != 'standard' or g.get('speed') not in ('blitz','rapid'):
-        raise ValueError('Nur Standard-Schach in Blitz oder Schnellschach wird gewertet')
+    if g.get('variant') != 'standard' or g.get('speed') not in ('bullet','blitz','rapid'):
+        raise ValueError('Nur Standard-Schach in Bullet, Blitz oder Schnellschach wird gewertet')
     if g.get('status') not in ('mate','resign','stalemate','timeout','draw','outoftime'):
         raise ValueError('Nur regulär abgeschlossene Partien werden gewertet')
     players = []

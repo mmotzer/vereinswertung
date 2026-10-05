@@ -49,7 +49,7 @@ def calculate(rows, player_id):
         ('Dabei sein', len(days), [1, 5, 10, 25, 50, 100, 250]),
         ('Begegnungen', len(opponents), [1, 5, 10, 20, 40, 60]),
         ('Am Vereinsbrett', len(events), [1, 5, 10, 25, 50, 100]),
-        ('Beide Disziplinen', len(categories), [2]),
+        ('Disziplinen entdecken', len(categories), [2, 3]),
     ]
     badges = []
     for name, value, thresholds in tracks:

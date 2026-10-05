@@ -72,6 +72,16 @@ class ParserTests(unittest.TestCase):
 
 
 class AppTests(unittest.TestCase):
+    def test_bullet_import_export_profile_and_undo(self):
+        tid=self.commit(self.payload(category='bullet'))
+        rows=self.client.get('/api/rankings?category=bullet').json['players']
+        self.assertEqual(sum(p['games'] for p in rows),4)
+        self.assertTrue(all(p['games']==0 for p in self.client.get('/api/rankings?category=blitz').json['players']))
+        self.assertIn('bullet',self.client.get('/api/players/'+str(rows[0]['id'])).json['ratings'])
+        self.assertEqual(self.client.get('/api/export.csv?category=bullet').status_code,200)
+        self.assertEqual(self.post(f'/api/tournaments/{tid}/undo',{'confirm':'Vereinsabend'}).status_code,200)
+        self.assertTrue(all(p['games']==0 for p in self.client.get('/api/rankings?category=bullet').json['players']))
+
     def test_personal_progression_is_private_and_undo_aware(self):
         self.assertEqual(self.app.test_client().get('/api/progression').status_code,401)
         self.assertIsNone(self.client.get('/api/progression').json['personal'])

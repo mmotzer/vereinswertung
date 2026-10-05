@@ -13,11 +13,11 @@ function render() {
   if (!lists) return;
   sheets.replaceChildren();
   const selected = document.querySelector('#print-category').value;
-  for (const cat of selected === 'both' ? ['blitz','rapid'] : [selected]) {
+  for (const cat of selected === 'all' ? ['bullet','blitz','rapid'] : selected === 'both' ? ['blitz','rapid'] : [selected]) {
     const players = lists[cat].players.filter(p => p.games || document.querySelector('#include-new').checked);
     const section = element('section', '', 'sheet'), header = element('header','');
     header.append(element('h1', document.querySelector('#club-title').value.trim() || 'SK1912 Ludwigshafen'),
-      element('h2', cat === 'blitz' ? 'Blitz · Vereinsrangliste' : 'Schnellschach · Vereinsrangliste'),
+      element('h2', ({bullet:'Bullet',blitz:'Blitz',rapid:'Schnellschach'}[cat])+' · Vereinsrangliste'),
       element('p', 'Stand: ' + loadedAt.toLocaleString('de-DE') + ' · ' + players.length + ' Spieler'));
     section.append(header);
     if (!players.length) section.append(element('p', 'Noch keine gewerteten Partien in dieser Kategorie.'));
@@ -34,7 +34,7 @@ function render() {
         body.append(r);
       }); table.append(body); section.append(table);
     }
-    section.append(element('p','* Vorläufige Wertung: Es liegen noch zu wenige verlässliche Ergebnisse vor oder die letzte Partie liegt länger zurück. Blitz und Schnellschach werden getrennt berechnet. Vereinsinterne Glicko-2-Wertung; alle beginnen bei 1500.','notes'));
+    section.append(element('p','* Vorläufige Wertung: Es liegen noch zu wenige verlässliche Ergebnisse vor oder die letzte Partie liegt länger zurück. Bullet, Blitz und Schnellschach werden getrennt berechnet. Vereinsinterne Glicko-2-Wertung; alle beginnen bei 1500.','notes'));
     sheets.append(section);
   }
 }
@@ -42,14 +42,14 @@ document.querySelectorAll('.controls input,.controls select').forEach(input => i
 button.addEventListener('click',() => window.print());
 (async () => {
   try {
-    const results = await Promise.all(['blitz','rapid'].map(async cat => {
+    const results = await Promise.all(['bullet','blitz','rapid'].map(async cat => {
       const response = await fetch('/api/rankings?category='+cat,{cache:'no-store'});
       if (response.status===401) { location.replace('/'); throw new Error('Bitte anmelden.'); }
       if (!response.ok) throw new Error('Wertungen konnten nicht geladen werden. Bitte neu laden.');
       return response.json();
     }));
     if (results[0].revision !== results[1].revision) throw new Error('Während des Ladens wurde ein Turnier geändert. Bitte neu laden.');
-    lists = {blitz:results[0],rapid:results[1]}; render(); button.disabled=false;
+    lists = {bullet:results[0],blitz:results[1],rapid:results[2]}; render(); button.disabled=false;
     status.textContent='Druckvorschau bereit. Änderungen an der Überschrift gelten nur für diesen Aushang.';
   } catch (e) { status.textContent=e.message; }
 })();
