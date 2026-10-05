@@ -25,6 +25,7 @@ import storage
 from rating import ENGINE_VERSION
 import trf
 import lichess_import
+import chesscom_import
 import member_features
 import club_roster
 import progression
@@ -338,8 +339,9 @@ def create_app(config=None):
             JOIN players o ON o.id=CASE WHEN g.white=h.player_id THEN g.black ELSE g.white END
             WHERE h.player_id=? ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC""", (pid,)):
             entry = dict(h)
-            if entry.pop("source") == "lichess" and not is_director():
-                entry["name"] = "Lichess-Vereinspartien"
+            origin = entry.pop("source")
+            if origin in ('lichess','chesscom') and not is_director():
+                entry["name"] = "Chess.com-Vereinspartien" if origin=='chesscom' else "Lichess-Vereinspartien"
             before, after = json.loads(h["before"]), json.loads(h["after"])
             entry.update(before=int(before["rating"]), after=int(after["rating"]),
                          diff=int(after["rating"]) - int(before["rating"]),
@@ -354,7 +356,7 @@ def create_app(config=None):
             (SELECT COUNT(*) FROM games WHERE tournament_id=t.id) games,
             (SELECT MAX(round) FROM games WHERE tournament_id=t.id) rounds
             FROM tournaments t WHERE t.hidden=0 ORDER BY date DESC,sequence DESC,id DESC""")
-        return jsonify(tournaments=[{**dict(r),"name":"Lichess-Vereinspartien" if r["source"]=="lichess" and not is_director() else r["name"]} for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
+        return jsonify(tournaments=[{**dict(r),"name":("Chess.com-Vereinspartien" if r["source"]=="chesscom" else "Lichess-Vereinspartien") if r["source"] in ('lichess','chesscom') and not is_director() else r["name"]} for r in rows if r["active"] or (g.user and (g.user["role"] == "admin" or r["owner"] == g.user["id"]))])
 
     @app.get("/api/tournaments/<int:tid>")
     def tournament(tid):
@@ -365,7 +367,7 @@ def create_app(config=None):
             raise Forbidden()
         if not is_director():
             detail.pop("director", None)
-            if source and source["source"] == "lichess":
+            if source and source["source"] in ('lichess','chesscom'):
                 detail["name"]="Lichess-Vereinspartien"
                 detail["skipped"]=[]
                 for game in detail["games"]:
@@ -411,7 +413,7 @@ def create_app(config=None):
             token = store_preview({"kind":"lichess-inspect","items":items,"submission_id":submission_id})
         assignments=storage.suggestions(db(),{"players":participants})
         if submission_id is not None:
-            proposed={storage.normalize('Lichess: '+data[key]):data[key+'_player'] for key in ('first','second')}
+            proposed={storage.normalize(('Chess.com: ' if data.get('platform')=='chesscom' else 'Lichess: ')+data[key]):data[key+'_player'] for key in ('first','second')}
             for assignment in assignments:
                 pid=proposed.get(storage.normalize(assignment['name']))
                 if pid:
@@ -436,7 +438,7 @@ def create_app(config=None):
             raise ValueError("Partieprüfung fehlt")
         if payload.get("kind")=="member-match":
             proposed=payload['payload']
-            mapping={player['name']:proposed['first_player'] if storage.normalize(player['name'])==storage.normalize('Lichess: '+proposed['first']) else proposed['second_player'] for item in payload['items'] for player in item['parsed']['players']}
+            mapping={player['name']:proposed['first_player'] if storage.normalize(player['name'])==storage.normalize(('Chess.com: ' if proposed.get('platform')=='chesscom' else 'Lichess: ')+proposed['first']) else proposed['second_player'] for item in payload['items'] for player in item['parsed']['players']}
         else:
             mapping = data.get("mapping")
         if not isinstance(mapping,dict):
@@ -569,7 +571,7 @@ def create_app(config=None):
             row = db().execute("SELECT * FROM tournaments WHERE id=? AND active=1", (tid,)).fetchone()
             if not row:
                 raise ValueError("Aktives Turnier nicht gefunden")
-            if row["source"] == "lichess":
+            if row["source"] in ('lichess','chesscom'):
                 director()
             if row["owner"] != g.user["id"] and g.user["role"] != "admin":
                 from werkzeug.exceptions import Forbidden
@@ -677,7 +679,7 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
@@ -686,7 +688,7 @@ def public_source_files():
     names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
         "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
-        "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/browser_fixture.py",
+        "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/test_chesscom.py", "tests/test_lichess.py", "tests/browser_fixture.py",
         "reference/versions.json", "reference/lila/LICENSE", "reference/scalachess/LICENSE"]
     names += [str(p.relative_to(ROOT)) for p in (ROOT / "reference").rglob("*.scala")]
     return [ROOT / name for name in names if (ROOT / name).is_file() and not (ROOT / name).is_symlink()]

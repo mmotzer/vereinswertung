@@ -72,6 +72,39 @@ class ParserTests(unittest.TestCase):
 
 
 class AppTests(unittest.TestCase):
+    def test_chesscom_submission_direct_import_and_privacy(self):
+        from unittest.mock import patch
+        import chesscom_import
+        from test_chesscom import exported
+        self.commit(self.payload())
+        with storage.open_db(self.path) as db:
+            ids=[r[0] for r in db.execute('SELECT id FROM players ORDER BY id LIMIT 2')]
+        data=dict(platform='chesscom',mode='match',first='Anna',second='Ben',day='2025-09-17',first_player=ids[0],second_player=ids[1],consent=True)
+        with patch('chesscom_import.fetch_match',return_value=[chesscom_import.parse_game(exported()),chesscom_import.parse_game(exported('67890',1758102000))]):
+            info=self.post('/api/submissions/inspect',data)
+        self.assertEqual(info.status_code,200,info.json)
+        selected=['chesscom:live:12345','chesscom:live:67890']
+        sid=self.post('/api/submissions',dict(token=info.json['token'],selected=selected,consent=True)).json['id']
+        inspect=self.post('/api/lichess/inspect',dict(submission_id=sid))
+        self.assertEqual(inspect.status_code,200,inspect.json)
+        preview=self.post('/api/lichess/preview',dict(token=info.json['token'],selected=selected,consent=True))
+        self.assertEqual(preview.status_code,200,preview.json)
+        saved=self.post('/api/import/commit',dict(token=preview.json['token']))
+        self.assertEqual(saved.status_code,200,saved.json)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM lichess_accounts").fetchone()[0],0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tournaments WHERE source='chesscom' AND active=1").fetchone()[0],1)
+            self.assertEqual([r[0] for r in db.execute("SELECT g.round FROM games g JOIN tournaments t ON t.id=g.tournament_id WHERE t.source='chesscom' AND t.active=1 ORDER BY g.round")],[1,2])
+            db.execute("UPDATE users SET role='member' WHERE username='admin'")
+        detail=self.client.get('/api/tournaments/'+str(saved.json['tournament_id']))
+        self.assertNotIn('chesscom:live',json.dumps(detail.json))
+        self.assertNotIn('Chess.com: Anna',json.dumps(detail.json))
+
+    def test_invalid_chesscom_pgn_does_not_create_submission(self):
+        response=self.post('/api/submissions/inspect',dict(platform='chesscom',pgn='broken',consent=True))
+        self.assertEqual(response.status_code,400)
+        self.assertEqual(self.client.get('/api/submissions').json['submissions'],[])
+
     def test_bullet_import_export_profile_and_undo(self):
         tid=self.commit(self.payload(category='bullet'))
         rows=self.client.get('/api/rankings?category=bullet').json['players']

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from flask import g, jsonify
 import storage
 import lichess_import
+import chesscom_import
 
 
 def request_email(db, fallback=''):
@@ -22,6 +23,8 @@ def validate_submission(data,db):
     note = data.get('note','')
     if not isinstance(note,str) or len(note)>1000:
         raise ValueError('Hinweis darf höchstens 1000 Zeichen haben')
+    platform=data.get('platform','lichess')
+    if platform not in ('lichess','chesscom'): raise ValueError('Ungültige Plattform')
     if data.get('mode') == 'match':
         first_id,second_id,day = data.get('first_player'),data.get('second_player'),data.get('day')
         if not isinstance(first_id,int) or not isinstance(second_id,int) or first_id==second_id:
@@ -30,19 +33,19 @@ def validate_submission(data,db):
         for key,pid in [('first',first_id),('second',second_id)]:
             if not db.execute('SELECT 1 FROM players WHERE id=?',(pid,)).fetchone():
                 raise ValueError('Vereinsspieler nicht gefunden')
-            account=db.execute('SELECT username FROM lichess_accounts WHERE player_id=?',(pid,)).fetchone()
+            account=db.execute('SELECT username FROM lichess_accounts WHERE player_id=?',(pid,)).fetchone() if platform=='lichess' else None
             name=data.get(key) or (account[0] if account else '')
             if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,30}',name.strip()):
-                raise ValueError('Für beide Spieler einen gültigen Lichess-Namen eingeben')
+                raise ValueError('Für beide Spieler einen gültigen Online-Namen eingeben')
             names.append(name.strip())
         if names[0].casefold()==names[1].casefold():
-            raise ValueError('Zwei verschiedene Lichess-Namen eingeben')
+            raise ValueError('Zwei verschiedene Online-Namen eingeben')
         try:
             if date.fromisoformat(day)>datetime.now(ZoneInfo("Europe/Berlin")).date():
                 raise ValueError()
         except (TypeError,ValueError):
             raise ValueError('Gültigen Spieltag auswählen, nicht in der Zukunft')
-        payload={'mode':'match','first':names[0],'second':names[1],'first_player':first_id,'second_player':second_id,'day':day}
+        payload={'platform':platform,'mode':'match','first':names[0],'second':names[1],'first_player':first_id,'second_player':second_id,'day':day}
     else:
         raise ValueError('Spieltag und zwei Vereinsspieler auswählen')
     return {**payload,'consent':True},note.strip()
@@ -152,7 +155,7 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
         for r in rows:
             payload=json.loads(r['payload'])
             if not is_director():
-                payload={k:v for k,v in payload.items() if k in ('mode','first_player','second_player','day','consent')}
+                payload={k:v for k,v in payload.items() if k in ('platform','mode','first_player','second_player','day','consent')}
             result.append({**dict(r),'payload':payload})
         return jsonify(submissions=result)
 
@@ -161,7 +164,20 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
         check_limit('submission-load:'+str(g.user['id']),10)
         data=fields()
         link=data.get('link','')
-        if link:
+        platform=data.get('platform','lichess')
+        if platform not in ('lichess','chesscom'): raise ValueError('Ungültige Plattform')
+        if data.get('pgn'):
+            if platform!='chesscom' or data.get('consent') is not True: raise ValueError('Chess.com wählen und Zustimmung bestätigen')
+            items=chesscom_import.parse_pgn(data['pgn'])
+            item=items[0]
+            data={**data,'mode':'match','day':item['round_dates'][0],'first':item['parsed']['players'][0]['name'].split(': ',1)[1],'second':item['parsed']['players'][1]['name'].split(': ',1)[1]}
+            payload,note=validate_submission(data,db())
+            expected={payload['first'].casefold(),payload['second'].casefold()}
+            if any({p['name'].split(': ',1)[1].casefold() for p in i['parsed']['players']}!=expected or i['round_dates'][0]!=payload['day'] for i in items): raise ValueError('Eine PGN-Einreichung muss dieselben zwei Spieler und denselben Spieltag enthalten')
+        elif platform=='chesscom':
+            payload,note=validate_submission(data,db())
+            items=chesscom_import.fetch_match(payload['first'],payload['second'],payload['day'],link)
+        elif link:
             if not isinstance(link,str) or len(link.split())!=1: raise ValueError('Einen einzelnen Partielink eingeben')
             if data.get('consent') is not True: raise ValueError('Zustimmung beider Spieler bestätigen')
             items=lichess_import.fetch_games(link.strip())
@@ -176,7 +192,7 @@ def register(app,db,fields,admin,director,is_director,check_limit,credentials,cl
             db().execute('DELETE FROM previews WHERE expires<?',(time.time(),))
             db().execute("DELETE FROM previews WHERE owner=?",(g.user['id'],))
             db().execute('INSERT INTO previews VALUES(?,?,?,?,?)',(token,g.user['id'],storage.revision(db()),json.dumps({'kind':'member-match','payload':payload,'note':note,'items':items}),time.time()+1800))
-        return jsonify(token=token,games=[{'id':item['external_id'],'played':item['played'],'category':item['category'],'white_player':payload['first_player'] if storage.normalize(item['parsed']['players'][0]['name'])==storage.normalize('Lichess: '+payload['first']) else payload['second_player'],'score':item['parsed']['games'][0]['score']} for item in items])
+        return jsonify(token=token,games=[{'id':item['external_id'],'played':item['played'],'category':item['category'],'white_player':payload['first_player'] if storage.normalize(item['parsed']['players'][0]['name'])==storage.normalize(('Chess.com: ' if platform=='chesscom' else 'Lichess: ')+payload['first']) else payload['second_player'],'score':item['parsed']['games'][0]['score']} for item in items])
 
     @app.post('/api/submissions')
     def submit():

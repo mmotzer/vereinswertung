@@ -229,7 +229,7 @@ def import_tournament(db, payload, owner):
             raise ValueError("Zwei Turnierteilnehmer dürfen nicht demselben Spieler zugeordnet sein")
         used.add(chosen)
         ids[p["number"]] = chosen
-        if payload.get('external_id'):
+        if payload.get('external_id') and payload.get('source','lichess')=='lichess':
             db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(chosen,p['name'][9:]))
         db.execute("INSERT OR IGNORE INTO aliases(name_key,name,player_id) VALUES(?,?,?)", (key, p["name"], chosen))
     games = [{**g, "white": ids[g["white"]], "black": ids[g["black"]]} for g in payload["parsed"]["games"]]
@@ -242,7 +242,7 @@ def import_tournament(db, payload, owner):
     fingerprint = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
     raw_hash = hashlib.sha256(payload["text"].encode()).hexdigest()
     if payload.get('external_id') and db.execute("SELECT 1 FROM games g JOIN tournaments t ON t.id=g.tournament_id WHERE t.active=1 AND g.external_id=?",(payload['external_id'],)).fetchone():
-        raise ValueError('Diese Lichess-Partie wurde bereits importiert')
+        raise ValueError('Diese Online-Partie wurde bereits importiert')
     if db.execute("SELECT id FROM tournaments WHERE active=1 AND (fingerprint=? OR (raw_hash=? AND category=?))",
                   (fingerprint, raw_hash, category)).fetchone():
         raise ValueError("Dieses Turnier wurde bereits importiert. Für eine Korrektur zuerst zurücknehmen.")
@@ -263,7 +263,7 @@ def import_tournament(db, payload, owner):
                       payload["filename"], payload["text"], raw_hash, fingerprint, ENGINE_VERSION,
                       json.dumps(dates), json.dumps(payload["parsed"]["skipped"]), sequence)).lastrowid
     if payload.get("external_id"):
-        db.execute("UPDATE tournaments SET source='lichess' WHERE id=?", (tid,))
+        db.execute("UPDATE tournaments SET source=? WHERE id=?", (payload.get('source','lichess'),tid))
     for g in games:
         db.execute("INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
                    (tid, g["round"], g["white"], g["black"], g["score"], payload.get("played", timestamp(dates[g["round"] - 1]))))
@@ -278,10 +278,10 @@ def import_tournament(db, payload, owner):
 def group_lichess_days(db):
     from zoneinfo import ZoneInfo
     groups={}
-    for row in db.execute("SELECT t.id,t.category,g.played FROM tournaments t JOIN games g ON g.tournament_id=t.id WHERE t.active=1 AND t.source='lichess' ORDER BY t.sequence,t.id,g.id"):
+    for row in db.execute("SELECT t.id,t.category,t.source,g.played FROM tournaments t JOIN games g ON g.tournament_id=t.id WHERE t.active=1 AND t.source IN ('lichess','chesscom') ORDER BY t.sequence,t.id,g.id"):
         day=datetime.fromtimestamp(row['played'],ZoneInfo('Europe/Berlin')).date().isoformat()
-        groups.setdefault((day,row['category']),set()).add(row['id'])
-    for (day,category),ids in groups.items():
+        groups.setdefault((day,row['category'],row['source']),set()).add(row['id'])
+    for (day,category,source),ids in groups.items():
         target=min(ids)
         for tid in ids: db.execute('UPDATE games SET round=-id WHERE tournament_id=?',(tid,))
         for tid in ids:
@@ -290,7 +290,7 @@ def group_lichess_days(db):
                 db.execute('UPDATE tournaments SET active=0,hidden=1 WHERE id=?',(tid,))
         games=list(db.execute('SELECT id FROM games WHERE tournament_id=? ORDER BY played,original_sequence,id',(target,)))
         for number,row in enumerate(games,1): db.execute('UPDATE games SET round=? WHERE id=?',(number,row['id']))
-        db.execute("UPDATE tournaments SET name=?,date=?,end_date=?,round_dates=? WHERE id=?",('Lichess-Vereinspartien · '+day,day,day,json.dumps([day]*len(games)),target))
+        db.execute("UPDATE tournaments SET name=?,date=?,end_date=?,round_dates=? WHERE id=?",(('Chess.com' if source=='chesscom' else 'Lichess')+'-Vereinspartien · '+day,day,day,json.dumps([day]*len(games)),target))
     return groups
 
 

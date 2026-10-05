@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.21 .
+   docker build -t vereinswertung:1.22 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.21` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.22` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -122,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.21 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.22 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen
@@ -191,3 +191,6 @@ Eine private `club-roster.json` im Deployment enthält nur `name` und vierstelli
 
 ## Persönlicher Vereinsweg
 Unter „Mein Weg“ sieht jedes verknüpfte Mitglied ausschließlich seine eigenen EP, unbegrenzte Level (1.000 EP pro Level), Etappen und fünf Abzeichenreihen. Berechnung aus aktiven Partien, ohne Änderung der Glicko-Wertung. 50 EP für die ersten fünf Tagespartien, 10 EP für die nächsten zehn; 150 EP je TRF-Spieltag, 100 EP je aktiver ISO-Woche und 50 EP je Monatsgegner (maximal zehn). Europe/Berlin gilt für Tagesgrenzen. TRF wird als Veranstaltung vor Ort behandelt. Import-Rücknahmen und historische Nachimporte werden automatisch berücksichtigt. Die persönliche Anzeige lässt sich pro Konto auf dem Gerät ausblenden. Gemeinsamer Monatsfortschritt zählt jede Partie mit mindestens einem hinterlegten Vereinsmitglied einmal. Keine EP-Rangliste und keine Prestige-Rücksetzung.
+
+## Chess.com
+Unter Einreichen die Plattform Chess.com auswählen, Spieler, Online-Namen und Spieltag zuordnen und gemeinsame Partien laden. Ein direkter Chess.com-Live-Link begrenzt die Auswahl auf eine Partie; Namen und Datum bleiben erforderlich. Alternativ Chess.com-PGN (max. 1 MB, 30 Partien desselben Paars und Tages) hochladen; der erste zugeordnete Vereinsspieler ist Weiß in der ersten Partie. PGN braucht Ergebnis, UTCDate, EndTime, TimeControl und Live-Partielink (Link/Site); EndDate wird verwendet, wenn vorhanden. PGN-Zeitklassen: unter 180 Sekunden Bullet, unter 600 Blitz, sonst Schnellschach, jeweils Grundzeit plus 40 Inkremente. PGN-Dateien sind vom Einreichenden bearbeitbar und werden von der Turnierleitung geprüft. Keine Chess.com-Ratings werden übernommen. API-Archivdaten können verzögert erscheinen. Doppelte Plattform-IDs werden abgewiesen. Die normalen Genehmigungs-, Datenschutz-, Tagesgruppen- und EP-Regeln gelten.
