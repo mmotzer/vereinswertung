@@ -194,3 +194,7 @@ Unter „Mein Weg“ sieht jedes verknüpfte Mitglied ausschließlich seine eige
 
 ## Chess.com
 Unter Einreichen die Plattform Chess.com auswählen, Spieler, Online-Namen und Spieltag zuordnen und gemeinsame Partien laden. Ein direkter Chess.com-Live-Link begrenzt die Auswahl auf eine Partie; Namen und Datum bleiben erforderlich. Alternativ Chess.com-PGN (max. 1 MB, 30 Partien desselben Paars und Tages) hochladen; der erste zugeordnete Vereinsspieler ist Weiß in der ersten Partie. PGN braucht Ergebnis, UTCDate, EndTime, TimeControl und Live-Partielink (Link/Site); EndDate wird verwendet, wenn vorhanden. PGN-Zeitklassen: unter 180 Sekunden Bullet, unter 600 Blitz, sonst Schnellschach, jeweils Grundzeit plus 40 Inkremente. PGN-Dateien sind vom Einreichenden bearbeitbar und werden von der Turnierleitung geprüft. Keine Chess.com-Ratings werden übernommen. API-Archivdaten können verzögert erscheinen. Doppelte Plattform-IDs werden abgewiesen. Die normalen Genehmigungs-, Datenschutz-, Tagesgruppen- und EP-Regeln gelten.
+
+## Vereinsplattform (lokaler Pilot)
+
+Mehrere Vereine mit getrennten Datenbanken sowie konfigurierbaren Monats- und Jahresabos: siehe [Plattformbetrieb](docs/PLATTFORM.md). Die bestehende Einzelvereins-App und der laufende NAS-Stack werden dadurch nicht umgestellt.

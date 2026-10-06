@@ -1,4 +1,5 @@
 'use strict';
+const mountLogin = location.pathname.match(/^\/v\/[a-z0-9-]+/)?.[0] || '';
 const form = document.querySelector('#private-login');
 const submit = document.querySelector('#private-submit');
 const error = document.querySelector('#login-error');
@@ -6,12 +7,12 @@ let setup = false;
 const showError = message => { error.textContent = message; error.hidden = false; };
 async function initialize() {
   try {
-    const response = await fetch('/api/me', {cache: 'no-store'});
+    const response = await fetch(mountLogin + '/api/me', {cache: 'no-store'});
     if (!response.ok) throw new Error('Verbindung fehlgeschlagen. Bitte neu laden.');
     const me = await response.json();
     if (me.user) { location.reload(); return; }
     if (me.request_email) {
-      document.querySelector('#request-access-link').href = 'mailto:'+me.request_email+'?subject='+encodeURIComponent('Mitgliederzugang · SK1912 Vereinswertung')+'&body='+encodeURIComponent('Hallo,\n\nich möchte einen Mitgliederzugang zur Vereinswertung anfragen.\n\nMein Name:\nGewünschter Benutzername:\nMein Lichess-Name:\n\nBitte kein Passwort per E-Mail senden.\n');
+      document.querySelector('#request-access-link').href = 'mailto:'+me.request_email+'?subject='+encodeURIComponent('Mitgliederzugang · Vereinswertung')+'&body='+encodeURIComponent('Hallo,\n\nich möchte einen Mitgliederzugang zur Vereinswertung anfragen.\n\nMein Name:\nGewünschter Benutzername:\nMein Lichess-Name:\n\nBitte kein Passwort per E-Mail senden.\n');
       document.querySelector('#request-access').hidden = false;
     }
     setup = me.needs_setup;
@@ -24,7 +25,7 @@ async function initialize() {
 form.addEventListener('submit', async event => {
   event.preventDefault(); submit.disabled = true; error.hidden = true;
   try {
-    const response = await fetch(setup ? '/api/setup' : '/api/login', {
+    const response = await fetch(mountLogin + (setup ? '/api/setup' : '/api/login'), {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(Object.fromEntries(new FormData(form)))
     });
@@ -45,7 +46,7 @@ registration.addEventListener('submit',async event => {
     const data=Object.fromEntries(new FormData(registration));
     if (data.password!==data.repeat) throw new Error('Die Passwörter stimmen nicht überein.');
     delete data.repeat;
-    const response=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const response=await fetch(mountLogin + '/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     const result=await response.json();
     if (!response.ok) throw new Error(result.error || 'Registrierung fehlgeschlagen');
     form.elements.username.value=data.username;registration.reset();

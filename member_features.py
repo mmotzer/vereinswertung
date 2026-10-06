@@ -10,6 +10,7 @@ from flask import g, jsonify
 import storage
 import lichess_import
 import chesscom_import
+import club_roster
 
 
 def request_email(db, fallback=''):
@@ -52,6 +53,29 @@ def validate_submission(data,db):
 
 
 def register(app,db,fields,admin,director,is_director,check_limit,credentials,client_address,hash_password):
+    @app.post('/api/club-members')
+    def add_club_members():
+        admin()
+        entries=fields().get('members')
+        if not isinstance(entries,list) or not 1<=len(entries)<=500:raise ValueError('1 bis 500 Mitglieder angeben')
+        numbers=set()
+        for entry in entries:
+            if not isinstance(entry,dict) or not isinstance(entry.get('name'),str) or not 2<=len(entry['name'].strip())<=100 or not isinstance(entry.get('club_number'),str) or not re.fullmatch(r'[0-9]{4}',entry['club_number']) or entry['club_number'] in numbers:
+                raise ValueError('Pro Mitglied eine eindeutige vierstellige Nummer und einen Namen angeben')
+            entry['name']=entry['name'].strip();numbers.add(entry['club_number'])
+            old=db().execute('SELECT p.name FROM club_members m JOIN players p ON p.id=m.player_id WHERE m.club_number=?',(entry['club_number'],)).fetchone()
+            if old and storage.normalize(old['name'])!=storage.normalize(entry['name']):raise ValueError('Mitgliedsnummer gehört bereits zu einem anderen Spieler')
+        from app import backup_database
+        backup_database(app.config['DATABASE'])
+        db().execute('BEGIN IMMEDIATE')
+        try:
+            club_roster.provision(db(),entries);storage.bump(db())
+            storage.audit(db(),g.user['id'],'club_members_add',str(len(entries))+' Listeneinträge verarbeitet')
+            db().commit()
+        except Exception:
+            db().rollback();raise
+        return jsonify(ok=True)
+
     @app.post('/api/invitations')
     def invitation():
         admin()

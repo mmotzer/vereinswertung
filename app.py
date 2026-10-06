@@ -50,6 +50,8 @@ def create_app(config=None):
                       SECURE_COOKIE=os.environ.get("SECURE_COOKIE", "true").lower() == "true",
                       PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN", "").rstrip("/"),
                       REQUEST_EMAIL=os.environ.get("REQUEST_EMAIL", ""),
+                      ROSTER_FILE=None,
+                      SEED_ROSTER=True,
                       TRUSTED_PROXY_IPS=os.environ.get("TRUSTED_PROXY_IPS", ""),
                       MAX_CONTENT_LENGTH=3 * 1024 * 1024)
     if config:
@@ -58,7 +60,8 @@ def create_app(config=None):
         raise RuntimeError("BOOTSTRAP_TOKEN mit mindestens 24 Zeichen setzen (siehe README)")
     storage.initialize(app.config["DATABASE"])
     roster_path = ROOT / "club-roster.json"
-    club_roster.from_file(roster_path if roster_path.is_file() else ROOT / ".runtime" / "club-roster.json",app.config["DATABASE"]) if not app.config.get("TESTING") else None
+    if app.config['SEED_ROSTER'] and not app.config.get('TESTING'):
+        club_roster.from_file(Path(app.config['ROSTER_FILE']) if app.config['ROSTER_FILE'] else roster_path if roster_path.is_file() else ROOT / '.runtime' / 'club-roster.json',app.config['DATABASE'])
     password_slots = threading.BoundedSemaphore(2)
 
     def client_address():
@@ -679,13 +682,13 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
 def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
-    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "static/app.js", "static/index.html",
+    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "docs/PLATTFORM.md", "static/platform.html", "static/platform.js", "static/platform.css", "tests/test_platform.py", "static/app.js", "static/index.html",
         "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/test_chesscom.py", "tests/test_lichess.py", "tests/browser_fixture.py",

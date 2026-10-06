@@ -1,0 +1,33 @@
+services:
+  platform:
+    build: .
+    image: vereinsplattform:pilot
+    command: ["python", "club_platform.py"]
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      PLATFORM_DATA: /data/platform
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_MONTH: ${STRIPE_PRICE_MONTH:-}
+      STRIPE_PRICE_YEAR: ${STRIPE_PRICE_YEAR:-}
+      LEGAL_READY: ${LEGAL_READY:-false}
+      LEGAL_DIR: /legal
+    volumes:
+      - platform-data:/data
+      - ./legal:/legal:ro
+    networks: [platform]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+networks:
+  platform:
+volumes:
+  platform-data:

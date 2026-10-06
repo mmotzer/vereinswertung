@@ -1,8 +1,9 @@
 'use strict';
+const mountPwa = location.pathname.match(/^\/v\/[a-z0-9-]+/)?.[0] || '';
 let installPrompt = null;
 const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register('/sw.js', {scope: '/', updateViaCache: 'none'}).catch(() => {});
+  navigator.serviceWorker.register(mountPwa + '/sw.js', {scope: mountPwa + '/', updateViaCache: 'none'}).catch(() => {});
 }
 const installButton = document.querySelector('#pwa-install');
 const installDialog = document.querySelector('#pwa-dialog');

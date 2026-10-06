@@ -1,4 +1,5 @@
 'use strict';
+const mountPrint = location.pathname.match(/^\/v\/[a-z0-9-]+/)?.[0] || '';
 const sheets = document.querySelector('#print-sheets');
 const status = document.querySelector('#print-status');
 const button = document.querySelector('#print-button');
@@ -16,7 +17,7 @@ function render() {
   for (const cat of selected === 'all' ? ['bullet','blitz','rapid'] : selected === 'both' ? ['blitz','rapid'] : [selected]) {
     const players = lists[cat].players.filter(p => p.games || document.querySelector('#include-new').checked);
     const section = element('section', '', 'sheet'), header = element('header','');
-    header.append(element('h1', document.querySelector('#club-title').value.trim() || 'SK1912 Ludwigshafen'),
+    header.append(element('h1', document.querySelector('#club-title').value.trim() || (mountPrint ? 'Schachverein' : 'SK1912 Ludwigshafen')),
       element('h2', ({bullet:'Bullet',blitz:'Blitz',rapid:'Schnellschach'}[cat])+' · Vereinsrangliste'),
       element('p', 'Stand: ' + loadedAt.toLocaleString('de-DE') + ' · ' + players.length + ' Spieler'));
     section.append(header);
@@ -43,12 +44,12 @@ button.addEventListener('click',() => window.print());
 (async () => {
   try {
     const results = await Promise.all(['bullet','blitz','rapid'].map(async cat => {
-      const response = await fetch('/api/rankings?category='+cat,{cache:'no-store'});
-      if (response.status===401) { location.replace('/'); throw new Error('Bitte anmelden.'); }
+      const response = await fetch(mountPrint + '/api/rankings?category='+cat,{cache:'no-store'});
+      if (response.status===401) { location.replace(mountPrint + '/'); throw new Error('Bitte anmelden.'); }
       if (!response.ok) throw new Error('Wertungen konnten nicht geladen werden. Bitte neu laden.');
       return response.json();
     }));
-    if (results[0].revision !== results[1].revision) throw new Error('Während des Ladens wurde ein Turnier geändert. Bitte neu laden.');
+    if (results.some(result => result.revision !== results[0].revision)) throw new Error('Während des Ladens wurde ein Turnier geändert. Bitte neu laden.');
     lists = {bullet:results[0],blitz:results[1],rapid:results[2]}; render(); button.disabled=false;
     status.textContent='Druckvorschau bereit. Änderungen an der Überschrift gelten nur für diesen Aushang.';
   } catch (e) { status.textContent=e.message; }

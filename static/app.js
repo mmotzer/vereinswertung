@@ -1,4 +1,5 @@
 'use strict';
+const mountApp = location.pathname.match(/^\/v\/[a-z0-9-]+/)?.[0] || '';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -18,7 +19,7 @@ async function api(path, body) {
     options.headers = {'Content-Type': 'application/json', 'X-CSRF-Token': csrf || ''};
     options.body = JSON.stringify(body);
   }
-  const response = await fetch(path, options);
+  const response = await fetch(mountApp + path, options);
   if (response.status === 401 && user) { location.reload(); throw new Error('Bitte erneut anmelden'); }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen');
@@ -43,6 +44,7 @@ function empty(title, text, action = '') {
   return `<div class="empty"><div class="empty-icon" aria-hidden="true">♙</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p>${action}</div>`;
 }
 function refreshAuth() {
+  $('#billing-button').hidden = !mountApp || user?.role !== 'admin';
   $$('.auth-only').forEach(el => { el.hidden = !user; });
   $('.nav [data-page="submissions"]').textContent = ['director','admin'].includes(user?.role) ? 'Einreichungen' : 'Einreichen';
   $$('.director-only').forEach(el => { el.hidden = !['director', 'admin'].includes(user?.role); });
@@ -156,7 +158,7 @@ function renderRanks() {
 $$('[data-category]').forEach(button => button.addEventListener('click', async () => {
   category = button.dataset.category;
   $$('[data-category]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); });
-  $('#csv-link').href = '/api/export.csv?category=' + category;
+  $('#csv-link').href = mountApp + '/api/export.csv?category=' + category;
   try { await loadRanks(); } catch (error) { toast(error.message, true); }
 }));
 $('#player-search').addEventListener('input', renderRanks);
@@ -313,7 +315,7 @@ async function loadProgress() {
   const data = await api('/api/progression');
   const p = data.personal, c = data.community;
   let hide = false;
-  try { hide = localStorage.getItem('hide-progression-'+user.id) === 'yes'; } catch (_) { /* Optional device preference. */ }
+  try { hide = localStorage.getItem('hide-progression-'+mountApp+'-'+user.id) === 'yes'; } catch (_) { /* Optional device preference. */ }
   $('#hide-progress').checked = hide;
   target.hidden = hide;
   target.innerHTML = p ? `<div class="card level-card"><div class="eyebrow">${escapeHtml(p.player.name)}</div><h2>Vereinslevel ${p.level}</h2><p>Etappe ${p.stage} · Stufe ${p.stage_level} von 10</p>${progressBar(p.progress,p.next_level_ep,'Fortschritt zum nächsten Vereinslevel')}<p><strong>${p.progress} / ${p.next_level_ep} EP</strong> · noch ${p.remaining} EP bis Level ${p.level+1}</p><p class="muted">${p.ep} EP insgesamt. Pausen kosten keinen Fortschritt.</p><button class="button secondary" data-player="${p.player.player_id}" type="button">Deine Schachwertung ansehen</button></div><h2>Deine Meilensteine</h2><div class="badge-grid">${p.badges.map(b=>`<article class="card"><h3>${escapeHtml(b.name)}</h3><strong>${b.value}</strong><p>${b.achieved.length ? 'Erreicht: '+b.achieved.join(' · ') : 'Dein erster Meilenstein wartet auf dich.'}</p>${b.next ? progressBar(Math.min(b.value,b.next),b.next,b.name)+`<p class="muted">Nächster Meilenstein: ${b.next}</p>` : '<p>Alle Meilensteine dieser Reihe erreicht.</p>'}</article>`).join('')}</div><details class="card"><summary>Deine EP im Detail</summary><dl class="ep-breakdown">${Object.entries(p.breakdown).map(([k,v])=>`<div><dt>${epLabels[k]}</dt><dd>${v} EP</dd></div>`).join('')}</dl><h3>Letzte Spieltage</h3>${p.recent.length ? p.recent.map(d=>`<div class="ep-day"><strong>${formatDate(d.date)}</strong><span>${d.count} Partien · ${d.ep} EP</span><small>${Object.entries(epLabels).filter(([k])=>d[k]).map(([k,label])=>`${label}: ${d[k]} EP`).join(' · ') || 'Tagesgrenze erreicht; Partien zählen weiterhin für Abzeichen.'}</small></div>`).join('') : '<p>Nach deiner ersten gewerteten Partie erscheint hier dein Fortschritt.</p>'}</details>` : empty('Dein Mitgliedskonto verbinden','Dieser Zugang ist keinem vorbereiteten Vereinsmitglied zugeordnet. Bitte nutze deinen persönlichen Mitgliedszugang oder wende dich an die Administration.');
@@ -321,7 +323,7 @@ async function loadProgress() {
 }
 $('#hide-progress').addEventListener('change', event => {
   $('#progress-content').hidden = event.target.checked;
-  try { localStorage.setItem('hide-progression-'+user.id,event.target.checked?'yes':'no'); } catch (_) { /* Still hide for this session. */ }
+  try { localStorage.setItem('hide-progression-'+mountApp+'-'+user.id,event.target.checked?'yes':'no'); } catch (_) { /* Still hide for this session. */ }
 });
 async function navigate() {
   let page = location.hash.slice(1) || 'rankings';
@@ -484,3 +486,17 @@ $('#club-member-list').addEventListener('click',event => {
 });
 
 for(const id of ['submission-games','submission-consent']) $('#'+id).addEventListener('change',()=>{submissionGeneration++; $('#submission-direct-preview').hidden=true;});
+
+$('#billing-button').addEventListener('click', event => busy(event.target, async () => {
+  const result = await api('/api/billing/portal', {}); location.assign(result.url);
+}));
+
+$('#roster-form').addEventListener('submit', event => {
+  event.preventDefault();busy(event.submitter,async () => {
+    const members=$('#roster-input').value.split(/\r?\n/).filter(line=>line.trim()).map(line => {
+      const split=line.indexOf(';');if(split<0)throw new Error('Format: 0001; Nachname, Vorname');
+      return {club_number:line.slice(0,split).trim(),name:line.slice(split+1).trim()};
+    });
+    await api('/api/club-members',{members});event.target.reset();await loadAdmin();toast('Mitgliederkonten vorbereitet.');
+  });
+});
