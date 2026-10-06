@@ -23,6 +23,7 @@ from app import ROOT, create_app, backup_database
 import storage
 import billing
 import permissions
+import trial
 
 SCHEMA='''CREATE TABLE IF NOT EXISTS clubs(
  id TEXT PRIMARY KEY,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,email TEXT NOT NULL,
@@ -43,8 +44,14 @@ def create_platform(config=None):
         STRIPE_PRICE_YEAR=os.environ.get('STRIPE_PRICE_YEAR',''),
         LEGAL_READY=os.environ.get('LEGAL_READY','false')=='true',
         LEGAL_DIR=os.environ.get('LEGAL_DIR',''),
+        TENANT_DOMAIN=os.environ.get('TENANT_DOMAIN','').lower().strip(),
         TRUSTED_PROXY_IPS=os.environ.get('TRUSTED_PROXY_IPS',''),MAX_CONTENT_LENGTH=3*1024*1024)
     if config: app.config.update(config)
+    tenant_domain=app.config['TENANT_DOMAIN']
+    if tenant_domain:
+        if not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?',tenant_domain) or '..' in tenant_domain or '.' not in tenant_domain:raise ValueError('Ungültige Vereinsdomain')
+        public_host=urlparse(app.config['PUBLIC_ORIGIN']).hostname or ''
+        if public_host.endswith('.'+tenant_domain):raise ValueError('Plattformadresse darf keinen Vereins-Unterbereich belegen')
     root=Path(app.config['DATA_ROOT']).resolve();root.mkdir(parents=True,exist_ok=True)
     @contextmanager
     def registry():
@@ -53,7 +60,7 @@ def create_platform(config=None):
             with db: yield db
         finally: db.close()
     with registry() as db: db.executescript(SCHEMA)
-    apps={};lock=threading.Lock()
+    apps={};lock=threading.Lock();billing_lock=threading.Lock()
     password_slots=threading.BoundedSemaphore(2)
     app.extensions['registry']=registry
 
@@ -67,7 +74,7 @@ def create_platform(config=None):
                 if not re.fullmatch(r'[a-f0-9]{32}',row['id']): raise ValueError('Ungültige Vereinskennung')
                 folder=root/'tenants'/row['id']; folder.mkdir(parents=True,exist_ok=True)
                 child=create_app(dict(DATABASE=str(folder/'club.sqlite'),BOOTSTRAP_TOKEN=secrets.token_urlsafe(32),
-                    SEED_ROSTER=False,REQUEST_EMAIL=row['email'],PUBLIC_ORIGIN=app.config['PUBLIC_ORIGIN'],SECURE_COOKIE=app.config['SECURE_COOKIE'],
+                    SEED_ROSTER=False,REQUEST_EMAIL=row['email'],PUBLIC_ORIGIN=('https://'+row['slug']+'.'+tenant_domain) if tenant_domain else app.config['PUBLIC_ORIGIN'],SECURE_COOKIE=app.config['SECURE_COOKIE'],
                     TRUSTED_PROXY_IPS=app.config['TRUSTED_PROXY_IPS'],TESTING=app.config.get('TESTING',False)))
                 if not row['provisioned']:
                     with storage.open_db(child.config['DATABASE']) as db:
@@ -95,11 +102,24 @@ def create_platform(config=None):
             except ValueError:pass
         return peer
 
+    def club_url(slug):
+        return 'https://'+slug+'.'+tenant_domain+'/' if tenant_domain else app.config['PUBLIC_ORIGIN']+'/v/'+slug+'/'
+
+    def host_club():
+        host=request.host.split(':',1)[0].lower()
+        if tenant_domain and host.endswith('.'+tenant_domain):
+            slug=host[:-(len(tenant_domain)+1)]
+            if re.fullmatch(r'[a-z0-9][a-z0-9-]{2,39}',slug):return slug
+        return None
+
     @app.before_request
     def origin():
-        if request.method=='POST' and request.path!='/api/platform/webhook':
-            expected=app.config['PUBLIC_ORIGIN'] or request.host_url.rstrip('/')
+        slug=host_club()
+        if request.method=='POST' and (slug or request.path!='/api/platform/webhook'):
+            expected=club_url(slug).rstrip('/') if slug else app.config['PUBLIC_ORIGIN'] or request.host_url.rstrip('/')
             if request.headers.get('Origin')!=expected: return jsonify(error='Ungültiger Ursprung'),403
+        if slug:
+            return serve_club(slug,request.path.lstrip('/'),'',club_url(slug).rstrip('/'))
 
     @app.after_request
     def headers(response):
@@ -120,6 +140,19 @@ def create_platform(config=None):
     @app.get('/')
     def landing(): return send_from_directory(ROOT/'static','platform.html')
 
+    @app.get('/start')
+    def start():return send_from_directory(ROOT/'static','platform.html')
+
+    @app.post('/api/platform/try')
+    def try_tournament():
+        now=time.time();key='try:'+hashlib.sha256(peer_address().encode()).hexdigest()
+        with registry() as db:
+            db.execute('DELETE FROM limits WHERE expires<?',(now,))
+            row=db.execute('SELECT * FROM limits WHERE address=?',(key,)).fetchone()
+            if row and row['count']>=10:return jsonify(error='Bitte in 15 Minuten erneut versuchen.'),429
+            db.execute('INSERT INTO limits VALUES(?,1,?) ON CONFLICT(address) DO UPDATE SET count=count+1',(key,now+900))
+        return jsonify(trial.calculate(request.get_json(silent=True),ROOT/'static'/'demo.trf'))
+
     @app.get('/api/health')
     def health():
         with registry() as db:db.execute('SELECT 1').fetchone()
@@ -133,7 +166,7 @@ def create_platform(config=None):
     @app.get('/api/platform/status')
     def status():
         row=current_club(request.args.get('slug',''))
-        return jsonify(ready=bool(row and row['status']=='active'))
+        return jsonify(ready=bool(row and row['status']=='active'),url=club_url(row['slug']) if row and row['status']=='active' else None)
 
     def prices():
         result=[]
@@ -146,14 +179,14 @@ def create_platform(config=None):
 
     @app.get('/static/<path:filename>')
     def static(filename):
-        if filename not in ('platform.js','platform.css','style.css','icon.svg'): return '',404
+        if filename not in ('platform.js','platform.css','style.css','icon.svg','demo.trf'): return '',404
         return send_from_directory(ROOT/'static',filename)
 
     @app.get('/api/platform/config')
     def settings():
-        if not ready():return jsonify(checkout_ready=False,prices=[])
-        try:return jsonify(checkout_ready=True,prices=prices())
-        except Exception:return jsonify(checkout_ready=False,prices=[])
+        if not ready():return jsonify(checkout_ready=False,prices=[],tenant_domain=tenant_domain)
+        try:return jsonify(checkout_ready=True,prices=prices(),tenant_domain=tenant_domain)
+        except Exception:return jsonify(checkout_ready=False,prices=[],tenant_domain=tenant_domain)
 
     @app.post('/api/platform/checkout')
     def checkout():
@@ -186,7 +219,7 @@ def create_platform(config=None):
         fields={'mode':'subscription','line_items[0][price]':app.config['STRIPE_PRICE_'+plan.upper()],
             'line_items[0][quantity]':'1','customer_email':email,'client_reference_id':cid,
             'metadata[club_id]':cid,'subscription_data[metadata][club_id]':cid,
-            'success_url':app.config['PUBLIC_ORIGIN']+'/?club='+slug,'cancel_url':app.config['PUBLIC_ORIGIN']+'/?cancelled=1'}
+            'success_url':app.config['PUBLIC_ORIGIN']+'/start?club='+slug,'cancel_url':app.config['PUBLIC_ORIGIN']+'/start?cancelled=1'}
         try: session=billing.request(app.config,'checkout/sessions',fields,'club-'+cid)
         except Exception:
             # A timeout can happen after Stripe created the session. Keep the
@@ -199,6 +232,11 @@ def create_platform(config=None):
     @app.post('/api/platform/webhook')
     def webhook():
         event=billing.verify(request.get_data(),request.headers.get('Stripe-Signature',''),app.config['STRIPE_WEBHOOK_SECRET'])
+        # The current deployment has one application process. Serialize remote
+        # reads and state writes so concurrent deliveries cannot apply stale reads.
+        with billing_lock:return process_webhook(event)
+
+    def process_webhook(event):
         if not isinstance(event.get('id'),str) or not isinstance(event.get('created'),int): raise ValueError('Ungültiges Zahlungsereignis')
         obj=event.get('data',{}).get('object',{});kind=event.get('type')
         with registry() as db:
@@ -215,25 +253,35 @@ def create_platform(config=None):
                     db.execute('UPDATE clubs SET status=?,customer=?,subscription=?,event_created=MAX(event_created,?) WHERE id=?',('active' if subscription.get('status')=='active' else 'suspended',subscription['customer'],obj['subscription'],event['created'],club['id']))
         elif kind in ('customer.subscription.updated','customer.subscription.deleted'):
             # Retrieve current state instead of trusting delivery order of webhook snapshots.
-            subscription=billing.request(app.config,'subscriptions/'+obj['id'])
             with registry() as db:
-                db.execute('UPDATE clubs SET status=?,event_created=MAX(event_created,?) WHERE subscription=?',('active' if subscription.get('status') in ('active','trialing') else 'suspended',event['created'],obj['id']))
+                associated=db.execute('SELECT 1 FROM clubs WHERE subscription=?',(obj.get('id'),)).fetchone()
+            if associated:
+                subscription=billing.request(app.config,'subscriptions/'+obj['id'])
+                with registry() as db:
+                    db.execute('UPDATE clubs SET status=?,event_created=MAX(event_created,?) WHERE subscription=?',('active' if subscription.get('status') in ('active','trialing') else 'suspended',event['created'],obj['id']))
         with registry() as db: db.execute('INSERT OR IGNORE INTO events VALUES(?,?)',(event['id'],event['created']))
         return jsonify(ok=True)
 
     @app.route('/v/<slug>/',defaults={'path':''},methods=['GET','POST','HEAD'])
     @app.route('/v/<slug>/<path:path>',methods=['GET','POST','HEAD'])
     def club(slug,path):
+        if tenant_domain:
+            if request.method!='GET' and request.method!='HEAD':return jsonify(error='Bitte unter der neuen Vereinsadresse anmelden.'),409
+            from flask import redirect
+            return redirect(club_url(slug)+path+('?' + request.query_string.decode('ascii') if request.query_string else ''),code=302)
+        return serve_club(slug,path,'/v/'+slug,app.config['PUBLIC_ORIGIN'])
+
+    def serve_club(slug,path,prefix,public_origin):
         row=current_club(slug)
         if not row or row['status'] not in ('active','suspended'):return 'Vereinsbereich noch nicht freigeschaltet.',404
-        child=tenant(row);prefix='/v/'+slug
+        child=tenant(row)
         if path=='api/billing/portal' and request.method=='POST':
             token=hashlib.sha256(request.cookies.get('club_session','').encode()).hexdigest()
             with storage.open_db(child.config['DATABASE']) as db:
                 session=db.execute("SELECT s.csrf,u.role,u.permissions FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.active=1",(token,time.time())).fetchone()
             if not session or not permissions.effective(session['role'],session['permissions'])['billing'] or not secrets.compare_digest(session['csrf'],request.headers.get('X-CSRF-Token','')):return jsonify(error='Administrator-Anmeldung erforderlich'),403
             if not row['customer']:return jsonify(error='Für diesen Verein ist noch kein bezahltes Abo hinterlegt.'),400
-            result=billing.request(app.config,'billing_portal/sessions',dict(customer=row['customer'],return_url=app.config['PUBLIC_ORIGIN']+prefix+'/'))
+            result=billing.request(app.config,'billing_portal/sessions',dict(customer=row['customer'],return_url=public_origin+prefix+'/'))
             if urlparse(result.get('url','')).hostname!='billing.stripe.com' or urlparse(result.get('url','')).scheme!='https':raise ValueError('Ungültige Zahlungsadresse')
             return jsonify(url=result['url'])
         if row['status']=='suspended' and request.method=='POST' and path not in ('api/login','api/logout','api/password'):
@@ -242,6 +290,7 @@ def create_platform(config=None):
         response=Response.from_app(child.wsgi_app,env)
         if response.mimetype=='text/html':
             body=response.get_data(as_text=True).replace('SK1912 Ludwigshafen',html.escape(row['name'],quote=True)).replace('SK1912 Wertung',html.escape(row['name'][:20],quote=True))
+            body=body.replace('<head>','<head><meta name="club-platform" content="true">',1)
             body=re.sub(r'((?:href|src|action)=")(/(?!/))',lambda m:m[1]+prefix+m[2],body)
             response.set_data(body)
         if path=='static/manifest.webmanifest':
@@ -258,6 +307,18 @@ def create_platform(config=None):
         return response
 
     app.extensions['tenant_app']=tenant
+
+    def sync_billing():
+        with registry() as db:rows=db.execute('SELECT * FROM clubs WHERE subscription IS NOT NULL').fetchall()
+        if rows and not app.config['STRIPE_SECRET_KEY']:raise ValueError('Stripe-Schlüssel für den Abo-Abgleich erforderlich')
+        for row in rows:
+            with billing_lock:
+                subscription=billing.request(app.config,'subscriptions/'+row['subscription'])
+                if subscription.get('metadata',{}).get('club_id')!=row['id'] or subscription.get('customer')!=row['customer']:raise ValueError('Abo-Zuordnung stimmt nicht überein')
+                with registry() as db:db.execute('UPDATE clubs SET status=? WHERE id=? AND subscription=?',('active' if subscription.get('status') in ('active','trialing') else 'suspended',row['id'],row['subscription']))
+        return len(rows)
+
+    app.extensions['sync_billing']=sync_billing
     return app
 
 
@@ -269,9 +330,11 @@ if __name__=='__main__':
         while True:
             try:
                 folder=Path(app.config['DATA_ROOT'])/'backups'
-                if not folder.exists() or not any(folder.glob(time.strftime('%Y%m%d',time.gmtime())+'-*')):
+                if not folder.exists() or not any(folder.glob(time.strftime('%Y%m%d',time.gmtime())+'-*/complete.json')):
                     backup_platform(app)
             except Exception:logging.exception('Platform backup failed')
+            try:app.extensions['sync_billing']()
+            except Exception:logging.exception('Subscription reconciliation failed')
             time.sleep(3600)
     threading.Thread(target=backups,daemon=True).start()
     serve(app,host=os.environ.get('HOST','127.0.0.1'),port=int(os.environ.get('PORT','8082')),threads=8)

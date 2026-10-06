@@ -29,6 +29,7 @@ ENDPOINTS = {
     'rankings':'view', 'player':'view', 'tournaments':'view', 'tournament':'view',
     'users':'manage_users', 'add_user':'manage_users', 'update_user':'manage_users',
     'club_members':'manage_members', 'add_club_members':'manage_members', 'invitation':'manage_members',
+    'onboarding':'manage_members',
     'settings':'settings', 'save_settings':'settings', 'audit_log':'audit', 'backup_download':'backup',
     'export_csv':'export', 'print_rankings':'export', 'inspect':'import', 'preview':'import',
     'undo':'undo', 'hide_tournament':'manage_users', 'set_lichess':'import', 'reject':'approve',

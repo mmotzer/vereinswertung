@@ -1,4 +1,5 @@
 'use strict';
+const isPlatform=!!document.querySelector('meta[name=club-platform]');
 const mountApp = location.pathname.match(/^\/v\/[a-z0-9-]+/)?.[0] || '';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -46,12 +47,15 @@ function empty(title, text, action = '') {
 const can = key => !!user?.permissions?.[key];
 const canAdmin = () => ['manage_users','manage_members','settings','audit','backup'].some(can);
 function refreshAuth() {
-  $('#billing-button').hidden = !mountApp || !can('billing');
+  $('#billing-button').hidden = !isPlatform || !can('billing');
   $$('.auth-only').forEach(el => { el.hidden = !user; });
   $('.nav [data-page="submissions"]').textContent = (can('import') || can('approve')) ? 'Einreichungen' : 'Einreichen';
   $$('.director-only').forEach(el => { el.hidden = !(can('import') || can('approve')); });
   $$('.admin-only').forEach(el => { el.hidden = !canAdmin(); });
   $$('[data-permission]').forEach(el => {el.hidden = !can(el.dataset.permission);});
+  $('.nav [data-page=rankings]').hidden=!can('view');
+  $('.nav [data-page=tournaments]').hidden=!can('view');
+  $('.nav [data-page=submissions]').hidden=!(can('submit') || can('import') || can('approve'));
   $('.nav').dataset.items=$$('.nav a').filter(el=>!el.hidden).length;
   $('#login-button').textContent = user ? user.username : needsSetup ? 'App einrichten' : 'Anmelden';
 }
@@ -339,9 +343,11 @@ $('#hide-progress').addEventListener('change', event => {
   try { localStorage.setItem('hide-progression-'+mountApp+'-'+user.id,event.target.checked?'yes':'no'); } catch (_) { /* Still hide for this session. */ }
 });
 async function navigate() {
-  let page = location.hash.slice(1) || 'rankings';
+  await loadOnboarding();
+  let page = location.hash.slice(1) || (user?.role==='member' ? 'progress' : can('view') ? 'rankings' : canAdmin() ? 'admin' : 'help');
+  if(['rankings','tournaments'].includes(page) && !can('view')) page='help';
   if (!['progress','rankings','tournaments','import','submissions','help','admin'].includes(page)) page = 'rankings';
-  if ((page === 'import' && !(can('import') || can('approve'))) || (page === 'admin' && !canAdmin())) { page = 'rankings'; location.hash = '#rankings'; }
+  if ((page === 'import' && !(can('import') || can('approve'))) || (page === 'admin' && !canAdmin())) { page = can('view') ? 'rankings' : 'help'; location.hash = '#'+page; }
   $$('.page').forEach(el => { el.hidden = el.id !== 'page-' + page; });
   $$('.nav a').forEach(el => { el.classList.toggle('active', el.dataset.page === page); if (el.dataset.page === page) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   try {
@@ -523,3 +529,16 @@ $('#rights-form').addEventListener('submit',event=>{event.preventDefault();busy(
  await api('/api/users/'+id,{role:$('#rights-role').value,permissions:overrides});$('#rights-dialog').close();
  if(id===user.id){location.reload();return;}await loadAdmin();toast('Rechte gespeichert. Bestehende Sitzungen wurden beendet.');
 });});
+
+async function loadOnboarding() {
+ const panel=$('#onboarding-card');if(!isPlatform || !can('manage_members')){panel.hidden=true;return;}
+ try{
+  const state=await api('/api/onboarding');
+  const steps=[{done:state.members>0,label:'Mitglieder vorbereiten',text:'Mitgliedsnummer und Name hinzufügen; vorhandene Spieler bleiben zugeordnet.',href:'#admin'},
+  {done:state.leaders>0,label:'Turnierleitung festlegen',text:'Ein Zugang mit Import- oder Genehmigungsrecht reicht für den Start.',href:can('manage_users')?'#admin':null},
+  {done:state.tournaments>0,label:'Erstes Turnier werten',text:'TRF hochladen oder vereinbarte Onlinepartien genehmigen.',href:can('import')?'#import':can('approve')?'#submissions':null},
+  {done:state.claimed>0,label:'Mitglieder einladen',text:'Persönlichen Code weitergeben; Mitglieder wählen ihr Passwort selbst.',href:'#admin'}];
+  panel.hidden=steps.every(step=>step.done);if(panel.hidden)return;
+  panel.innerHTML='<details><summary>Verein einrichten · '+steps.filter(step=>step.done).length+' von 4 Schritten erledigt</summary><ul>'+steps.map(step=>'<li><strong>'+ (step.done?'✓ ':'○ ')+escapeHtml(step.label)+'</strong>'+(!step.done?'<p>'+escapeHtml(step.text)+(step.href?' <a href="'+step.href+'">Öffnen →</a>':'')+'</p>':'')+'</li>').join('')+'</ul></details>';
+ }catch(error){panel.hidden=true;}
+}

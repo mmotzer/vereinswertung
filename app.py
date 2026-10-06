@@ -241,6 +241,15 @@ def create_app(config=None):
                        request_email=member_features.request_email(db(),app.config["REQUEST_EMAIL"]),
                        needs_setup=not bool(db().execute("SELECT 1 FROM users WHERE password!='!unclaimed' LIMIT 1").fetchone()))
 
+    @app.get('/api/onboarding')
+    def onboarding():
+        admin()
+        members=db().execute('SELECT COUNT(*) FROM club_members').fetchone()[0]
+        claimed=db().execute('SELECT COUNT(*) FROM club_members WHERE claimed IS NOT NULL').fetchone()[0]
+        tournaments=db().execute('SELECT COUNT(*) FROM tournaments WHERE active=1').fetchone()[0]
+        leaders=sum(permissions.effective(row['role'],row['permissions'])['import'] or permissions.effective(row['role'],row['permissions'])['approve'] for row in db().execute('SELECT role,permissions FROM users WHERE active=1'))
+        return jsonify(members=members,claimed=claimed,tournaments=tournaments,leaders=leaders)
+
     @app.post("/api/setup")
     def setup():
         data = fields()
@@ -704,13 +713,13 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "permissions.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "permissions.py", "trial.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
 def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
-    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "docs/PLATTFORM.md", "static/platform.html", "static/platform.js", "static/platform.css", "tests/test_platform.py", "tests/test_permissions.py", "static/app.js", "static/index.html",
+    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "docs/PLATTFORM.md", "docs/KONZEPT.md", "static/platform.html", "static/platform.js", "static/platform.css", "static/demo.trf", "tests/test_trial.py", "tests/test_platform.py", "tests/test_permissions.py", "static/app.js", "static/index.html",
         "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/test_chesscom.py", "tests/test_lichess.py", "tests/browser_fixture.py",

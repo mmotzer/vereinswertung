@@ -69,5 +69,11 @@ class PermissionTests(unittest.TestCase):
         self.login('member')
         self.assertEqual(self.client.get('/api/rankings').status_code,403)
 
+    def test_onboarding_is_scoped_to_members_management(self):
+        state=self.client.get('/api/onboarding')
+        self.assertEqual(state.status_code,200);self.assertEqual(state.json['members'],0)
+        self.assertEqual(state.json['leaders'],2)
+        self.login('member');self.assertEqual(self.client.get('/api/onboarding').status_code,403)
+
 
 if __name__=='__main__':unittest.main()

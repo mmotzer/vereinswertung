@@ -41,3 +41,23 @@ Preise, Betreiberangaben und neue Plattformadresse festlegen. Stripe-Testlauf ei
 Unter „Zugänge → Rolle und Rechte“ können Berechtigungen einzeln erlaubt, verweigert oder aus der Rollenvorlage übernommen werden. Individuelle Vorgaben bleiben bei einem Rollenwechsel bestehen. „Zugänge, Rollen und Rechte verwalten“ erlaubt das Vergeben aller Rechte und sollte nur vertrauten Personen gegeben werden. Mindestens ein aktiver Administrator mit diesem Recht bleibt zwingend erhalten. Nicht beanspruchte Mitgliedskonten werden erst nach ihrer Übernahme bearbeitet.
 
 Rechte umfassen Lesen, Einreichen, direkte Importe, Genehmigung, Rücknahme eigener Importe, Mitglieder und Codes, Zugänge, Einstellungen, Export/Druck, Sicherungen, Protokoll und Abos. Administratoren mit Rücknahmerecht dürfen auch fremde Importe zurücknehmen. Rechte werden in der jeweiligen Vereinsdatenbank gespeichert und bei jeder Anfrage serverseitig geprüft. Änderungen an Zugängen werden protokolliert und beenden deren bestehende Anmeldesitzungen.
+
+## Probeimport und Einrichtung
+
+Die öffentliche Startseite bietet unter „Ohne Anmeldung ausprobieren“ ein fiktives Turnier oder eine eigene TRF-Datei. Es werden keine Konten angelegt und keine realen Vereinsdaten verändert. Grenzen: 1 MB, 200 Spieler, 2000 Partien, 30 Runden; zwei Berechnungen gleichzeitig und zehn Versuche je 15 Minuten pro erfasster Quelladresse. Hinter einem Tunnel muss TRUSTED_PROXY_IPS korrekt gesetzt sein, sonst teilen Besucher dessen Limit. Die temporäre Datenbank wird nach der Berechnung entfernt. Registrierung ist unter `/start` getrennt; Testergebnisse werden nicht übernommen.
+
+## Getrennte Vereinsadressen
+
+Optional `TENANT_DOMAIN=clubs.example.org` setzen. Vereine liegen dann unter `https://<kürzel>.clubs.example.org/`. Zuvor Wildcard-DNS, gültiges TLS und Tunnel-Routing für diese Hosts zum selben Plattformdienst einrichten. PUBLIC_ORIGIN bleibt die Plattformadresse; sie darf keine Vereins-Subdomain unter TENANT_DOMAIN sein. Sitzungs-Cookies bleiben hostgebunden, POST-Anfragen müssen vom passenden Ursprung kommen. Alte `/v/`-GET-Adressen werden weitergeleitet; Schreibanfragen dort verlangen eine neue Anmeldung. Ohne TENANT_DOMAIN bleibt der Pfadbetrieb bestehen und teilt einen Browser-Ursprung.
+
+## Sicherungen prüfen und wiederherstellen
+
+```powershell
+python platform_manage.py --data data/platform verify-backup --snapshot data/platform/backups/<snapshot>
+python platform_manage.py --data data/platform-restored restore --snapshot data/platform/backups/<snapshot>
+python platform_manage.py --data data/platform-restored sync-billing
+```
+
+Das Ziel der Wiederherstellung muss neu und leer sein. Alte Anmeldesitzungen werden verworfen. Bezahlte Vereine bleiben bis zum aktuellen Abo-Abgleich pausiert; dieser benötigt die gültige Stripe-Konfiguration. Automatische tägliche Backups zählen nur vollständig abgeschlossene Snapshots mit `complete.json`. Der laufende Plattformprozess gleicht Abos stündlich ab. Dieser Prozess ist für eine Instanz ausgelegt.
+
+Die ausführliche Bewertung und verbleibenden Startbedingungen stehen in [KONZEPT.md](KONZEPT.md).

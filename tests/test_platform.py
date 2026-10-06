@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash
 import billing
 import storage
 from club_platform import create_platform
-from platform_manage import backup_platform, import_club
+from platform_manage import backup_platform, import_club, verify_backup, restore_backup
 
 
 class PlatformTests(unittest.TestCase):
@@ -66,6 +66,25 @@ class PlatformTests(unittest.TestCase):
         self.assertNotIn('SK1912 Ludwigshafen',body)
         manifest=self.client.get('/v/club-one/static/manifest.webmanifest').json
         self.assertEqual(manifest['scope'],'/v/club-one/')
+
+    def test_separate_club_origins(self):
+        config=dict(self.app.config);config['TENANT_DOMAIN']='clubs.example'
+        app=create_platform(config);client=app.test_client()
+        self.seed('club-one','a'*32);self.seed('club-two','b'*32)
+        one='https://club-one.clubs.example';two='https://club-two.clubs.example'
+        denied=client.post('/api/login',base_url=one,json=dict(username='admin',password='test-password-123'),headers={'Origin':two})
+        self.assertEqual(denied.status_code,403)
+        login=client.post('/api/login',base_url=one,json=dict(username='admin',password='test-password-123'),headers={'Origin':one})
+        self.assertEqual(login.status_code,200)
+        self.assertIn('Path=/',login.headers['Set-Cookie']);self.assertNotIn('Domain=',login.headers['Set-Cookie'])
+        self.assertEqual(client.get('/api/rankings',base_url=two).status_code,401)
+        page=client.get('/',base_url=one).get_data(as_text=True)
+        self.assertIn('name="club-platform"',page);self.assertIn('/static/app.js',page)
+        self.assertEqual(client.get('/static/manifest.webmanifest',base_url=one).json['scope'],'/')
+        redirect=client.get('/v/club-one/?test=1',base_url='https://platform.example')
+        self.assertEqual(redirect.headers['Location'],one+'/?test=1')
+        self.assertEqual(client.post('/v/club-one/api/login',headers=self.origin).status_code,409)
+        self.assertEqual(client.get('/',base_url='https://missing.clubs.example').status_code,404)
 
     def test_suspended_readonly(self):
         self.seed('club-one','a'*32,'suspended')
@@ -164,6 +183,33 @@ class PlatformTests(unittest.TestCase):
             db.execute('UPDATE clubs SET checkout="cs_test"')
         self.assertEqual(self.event(event).status_code,200)
         self.assertTrue(self.client.get('/api/platform/status?slug=club-new').json['ready'])
+
+    def test_verified_restore_and_corruption_detection(self):
+        self.seed('club-one','a'*32)
+        self.client.post('/v/club-one/api/login',json=dict(username='admin',password='test-password-123'),headers=self.origin)
+        with storage.open_db(self.root/'tenants'/('a'*32)/'club.sqlite') as db:db.execute('INSERT INTO players(name,created) VALUES(?,?)',('Restored Player',time.time()))
+        snapshot=backup_platform(self.app);self.assertEqual(verify_backup(snapshot),['a'*32])
+        restored=create_platform(dict(DATA_ROOT=str(self.root/'restored'),TESTING=True))
+        restore_backup(restored,snapshot)
+        with storage.open_db(self.root/'restored'/'tenants'/('a'*32)/'club.sqlite') as db:
+            self.assertEqual(db.execute('SELECT name FROM players').fetchone()[0],'Restored Player')
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],0)
+        with self.assertRaises(ValueError):restore_backup(restored,snapshot)
+        with open(snapshot/'platform.sqlite','ab') as file:file.write(b'corrupted')
+        with self.assertRaises(ValueError):verify_backup(snapshot)
+
+    @patch('billing.request')
+    def test_reconcile_missed_cancellation(self,mock):
+        self.seed('club-one','a'*32)
+        with self.registry() as db:db.execute('UPDATE clubs SET subscription="sub_test",customer="cus_test"')
+        mock.return_value=dict(status='canceled',customer='cus_test',metadata={'club_id':'a'*32})
+        self.assertEqual(self.app.extensions['sync_billing'](),1)
+        with self.registry() as db:self.assertEqual(db.execute('SELECT status FROM clubs').fetchone()[0],'suspended')
+
+    @patch('billing.request')
+    def test_unrelated_subscription_is_not_retrieved(self,mock):
+        event=dict(id='evt_other',created=10,type='customer.subscription.updated',data=dict(object=dict(id='sub_other')))
+        self.assertEqual(self.event(event).status_code,200);mock.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()
