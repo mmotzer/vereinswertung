@@ -10,3 +10,6 @@ source bytes. Maintain the explicit public-source allowlist in app.py when addin
 release files. Never commit runtime data, private rosters or credentials.
 Production deployment is separate from repository maintenance; do not deploy
 without a deployment request. Explain limitations and failed checks honestly.
+
+Marc explicitly authorizes direct pushes to main for his changes. Do not create
+a pull request unless requested. Check the remote state and never force-push main.

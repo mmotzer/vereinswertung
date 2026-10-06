@@ -9,17 +9,17 @@ Durchsetzung aller Google-Regeln.
 ## Arbeitsablauf
 
 1. `main` aktualisieren: `git switch main`, anschließend `git pull --ff-only`.
-2. Eine eigene Branch für genau eine Aufgabe erstellen. Codex verwendet `codex/`.
+2. Marc hat direkte Pushes auf `main` autorisiert. Für seine Änderungen ist kein Pull Request erforderlich. Optionale Arbeitsbranches von Codex verwenden `codex/`.
 3. Umfang vorab miteinander abstimmen, besonders bei Änderungen an `app.py`.
 4. Kleine Commits schreiben. Verschieben/Formatieren und Verhaltensänderungen trennen.
 5. `python tools/check.py` mit dem eingerichteten Entwicklungsinterpreter ausführen.
-6. Pull Request gegen `main` öffnen: Problem, Ergebnis und Prüfung beschreiben.
-7. Die andere Person prüft die Änderung; anschließend zusammenführen.
+6. Geprüfte Änderungen direkt auf `main` pushen. Zuvor den Remote-Stand prüfen; keine Änderungen anderer Personen überschreiben.
+7. Für größere gemeinsame Arbeiten können beide Entwickler freiwillig einen Pull Request mit gegenseitigem Review verwenden.
 
 Keine fremde Branch überschreiben und kein Force-Push auf `main`.
-Ein Review ist unser Arbeitsablauf; eine technische GitHub-Branchsperre wird
-nicht durch diese Dokumentation aktiviert. Produktionsdeployment ist ein
-separater Schritt nach Review und Sicherung.
+Ein Review ist optional; eine technische GitHub-Branchsperre wird nicht durch
+diese Dokumentation aktiviert. Produktionsdeployment ist ein separater Schritt
+nach Prüfung und Sicherung.
 
 ## Stil und Prüfungen
 
