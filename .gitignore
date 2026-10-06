@@ -13,3 +13,8 @@ docs/PRUEFUNG.md
 
 # Disposable SQLite test databases
 tmp*/
+
+.ruff_cache/
+.env.*
+*.env
+!.env.example

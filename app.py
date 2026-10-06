@@ -1390,6 +1390,18 @@ def create_app(config=None):
 
 
 SOURCE_FILES = [
+    "CONTRIBUTING.md",
+    "AGENTS.md",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    ".editorconfig",
+    ".gitattributes",
+    "tools/check.py",
+    ".github/pull_request_template.md",
+    ".github/workflows/ci.yml",
+    "docs/README.md",
+    "docs/ARCHITEKTUR.md",
+    "docs/BETRIEB.md",
     "vereinswertung/__init__.py",
     "app.py",
     "vereinswertung/permissions.py",
