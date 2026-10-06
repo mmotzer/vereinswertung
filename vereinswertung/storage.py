@@ -8,8 +8,8 @@ from contextlib import contextmanager, closing
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from rating import Rating, ENGINE_VERSION, game, live
-from trf import normalize
+from vereinswertung.rating import Rating, ENGINE_VERSION, game, live
+from vereinswertung.trf import normalize
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL);

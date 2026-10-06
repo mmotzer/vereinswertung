@@ -6,9 +6,7 @@ from unittest.mock import patch
 
 from app import ROOT
 from club_platform import create_platform
-import trial
-
-
+from vereinswertung import trial
 class TrialTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
@@ -30,7 +28,7 @@ class TrialTests(unittest.TestCase):
         def track(*args,**kwargs):
             directory=real(*args,**kwargs);folders.append(Path(directory.name));return directory
         data=dict(content=base64.b64encode((ROOT/'static'/'demo.trf').read_bytes()).decode(),category='rapid',day='2025-09-16')
-        with patch('trial.tempfile.TemporaryDirectory',side_effect=track):result=trial.calculate(data,ROOT/'static'/'demo.trf')
+        with patch('vereinswertung.trial.tempfile.TemporaryDirectory',side_effect=track):result=trial.calculate(data,ROOT/'static'/'demo.trf')
         self.assertEqual(result['category'],'rapid');self.assertTrue(folders)
         self.assertTrue(all(not path.exists() for path in folders))
 

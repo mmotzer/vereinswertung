@@ -5,9 +5,7 @@ import unittest
 from pathlib import Path
 from werkzeug.security import generate_password_hash
 from app import create_app
-import storage
-
-
+from vereinswertung import storage
 class PermissionTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.path=Path(self.temp.name)/'club.sqlite'

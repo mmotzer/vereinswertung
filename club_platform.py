@@ -20,11 +20,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
 
 from app import ROOT, create_app, backup_database
-import storage
-import billing
-import permissions
-import trial
-
+from vereinswertung import storage
+from vereinswertung import billing
+from vereinswertung import permissions
+from vereinswertung import trial
 SCHEMA='''CREATE TABLE IF NOT EXISTS clubs(
  id TEXT PRIMARY KEY,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,email TEXT NOT NULL,
  username TEXT NOT NULL,password TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',

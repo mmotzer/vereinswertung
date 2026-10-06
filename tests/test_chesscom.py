@@ -2,9 +2,7 @@ import io
 import json
 import unittest
 from unittest.mock import patch
-import chesscom_import as cc
-
-
+from vereinswertung import chesscom_import as cc
 def exported(gid='12345', stamp=1758101000, speed='blitz'):
     return dict(url='https://www.chess.com/game/live/'+gid,rules='chess',time_class=speed,end_time=stamp,
         white=dict(username='Anna',result='win',rating=2500),black=dict(username='Ben',result='resigned',rating=800))

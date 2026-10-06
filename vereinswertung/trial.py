@@ -5,9 +5,8 @@ import tempfile
 import threading
 from pathlib import Path
 
-import storage
-import trf
-
+from vereinswertung import storage
+from vereinswertung import trf
 MAX_BYTES=1024*1024
 SLOTS=threading.BoundedSemaphore(2)
 

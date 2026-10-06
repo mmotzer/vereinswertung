@@ -9,9 +9,7 @@ import sqlite3
 from contextlib import closing
 
 from app import ROOT, backup_database, load_env
-import storage
-
-
+from vereinswertung import storage
 def main():
     parser = argparse.ArgumentParser(description="Vereinswertung verwalten")
     parser.add_argument("command", choices=["init-local", "backup", "restore", "reset-admin"])

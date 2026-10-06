@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from werkzeug.security import generate_password_hash
-import billing
-import storage
+from vereinswertung import billing
+from vereinswertung import storage
 from club_platform import create_platform
 from platform_manage import backup_platform, import_club, verify_backup, restore_backup
 
@@ -99,7 +99,7 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/platform/checkout',json={},headers=self.origin).status_code,503)
         with self.registry() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM clubs').fetchone()[0],0)
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_checkout_paid_and_duplicate_event(self,mock):
         mock.side_effect=self.stripe
         data=dict(name='New Club',slug='club-new',email='a@example.org',username='admin',password='test-password-123',plan='month',terms=True)
@@ -150,7 +150,7 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],0)
         with storage.open_db(source) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],1)
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_retry_after_checkout_timeout_keeps_idempotency(self,mock):
         keys=[];fail=[True]
         def call(config,path,fields=None,idempotency=None):
@@ -164,7 +164,7 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/platform/checkout',json=data,headers=self.origin).status_code,200)
         self.assertEqual(keys[0],keys[1])
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_out_of_order_subscription_reads_current_state(self,mock):
         self.seed('club-one','a'*32)
         with self.registry() as db:db.execute('UPDATE clubs SET subscription="sub_test" WHERE slug="club-one"')
@@ -173,7 +173,7 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(self.event(event).status_code,200)
         with self.registry() as db:self.assertEqual(db.execute('SELECT status FROM clubs').fetchone()[0],'suspended')
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_webhook_before_checkout_storage_is_retried(self,mock):
         self.seed('club-new','a'*32,'pending');mock.side_effect=self.stripe
         event=dict(id='evt_race',created=int(time.time()),type='checkout.session.completed',data=dict(object=dict(client_reference_id='a'*32,id='cs_test',subscription='sub_test',customer='cus_test',payment_status='paid')))
@@ -198,7 +198,7 @@ class PlatformTests(unittest.TestCase):
         with open(snapshot/'platform.sqlite','ab') as file:file.write(b'corrupted')
         with self.assertRaises(ValueError):verify_backup(snapshot)
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_reconcile_missed_cancellation(self,mock):
         self.seed('club-one','a'*32)
         with self.registry() as db:db.execute('UPDATE clubs SET subscription="sub_test",customer="cus_test"')
@@ -206,7 +206,7 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(self.app.extensions['sync_billing'](),1)
         with self.registry() as db:self.assertEqual(db.execute('SELECT status FROM clubs').fetchone()[0],'suspended')
 
-    @patch('billing.request')
+    @patch('vereinswertung.billing.request')
     def test_unrelated_subscription_is_not_retrieved(self,mock):
         event=dict(id='evt_other',created=10,type='customer.subscription.updated',data=dict(object=dict(id='sub_other')))
         self.assertEqual(self.event(event).status_code,200);mock.assert_not_called()

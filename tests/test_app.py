@@ -9,11 +9,9 @@ from contextlib import closing
 from pathlib import Path
 
 from app import create_app, backup_database
-import storage
-import club_roster
-import trf
-
-
+from vereinswertung import storage
+from vereinswertung import club_roster
+from vereinswertung import trf
 def player_line(number,name,rounds,rating=2200):
     line=list(' '*91)
     line[0:3]='001';line[4:8]=f'{number:4d}';line[9]='M'
@@ -74,13 +72,13 @@ class ParserTests(unittest.TestCase):
 class AppTests(unittest.TestCase):
     def test_chesscom_submission_direct_import_and_privacy(self):
         from unittest.mock import patch
-        import chesscom_import
+        from vereinswertung import chesscom_import
         from test_chesscom import exported
         self.commit(self.payload())
         with storage.open_db(self.path) as db:
             ids=[r[0] for r in db.execute('SELECT id FROM players ORDER BY id LIMIT 2')]
         data=dict(platform='chesscom',mode='match',first='Anna',second='Ben',day='2025-09-17',first_player=ids[0],second_player=ids[1],consent=True)
-        with patch('chesscom_import.fetch_match',return_value=[chesscom_import.parse_game(exported()),chesscom_import.parse_game(exported('67890',1758102000))]):
+        with patch('vereinswertung.chesscom_import.fetch_match',return_value=[chesscom_import.parse_game(exported()),chesscom_import.parse_game(exported('67890',1758102000))]):
             info=self.post('/api/submissions/inspect',data)
         self.assertEqual(info.status_code,200,info.json)
         selected=['chesscom:live:12345','chesscom:live:67890']
@@ -186,7 +184,7 @@ class AppTests(unittest.TestCase):
 
     def test_lichess_batch_consent_selection_atomicity_and_duplicate(self):
         from unittest.mock import patch
-        import lichess_import
+        from vereinswertung import lichess_import
         self.commit(self.payload())
         players = {p['name']:p['id'] for p in self.client.get('/api/rankings').json['players']}
         mapping = {'Lichess: Anna':players['Alpha, Anna'],'Lichess: Ben':players['Beta, Ben']}
@@ -194,7 +192,7 @@ class AppTests(unittest.TestCase):
             return lichess_import.parse_game({'id':gid,'variant':'standard','speed':cat,'status':'mate','winner':'white',
                 'lastMoveAt':stamp,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
         items = [exported('abcdefgh','blitz',1758100000000),exported('ijklmnop','rapid',1758101000000)]
-        with patch('lichess_import.fetch_games',return_value=items):
+        with patch('vereinswertung.lichess_import.fetch_games',return_value=items):
             inspect = self.post('/api/lichess/inspect',{'links':'links'}).json
         self.assertEqual(self.post('/api/import/commit',{'token':inspect['token']}).status_code,400)
         request = {'token':inspect['token'],'mapping':mapping,'selected':['abcdefgh','ijklmnop'],'consent':False}
@@ -212,7 +210,7 @@ class AppTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM players').fetchone()[0],4)
 
     def test_lichess_day_group_keeps_chronology_and_duplicate_protection(self):
-        import lichess_import
+        from vereinswertung import lichess_import
         self.commit(self.payload())
         ids={p['name']:p['id'] for p in self.client.get('/api/rankings').json['players']}
         def item(gid,stamp):
@@ -250,20 +248,20 @@ class AppTests(unittest.TestCase):
 
     def test_single_link_member_submission_and_director_direct_import(self):
         from unittest.mock import patch
-        import lichess_import
+        from vereinswertung import lichess_import
         self.commit(self.payload())
         players=self.client.get('/api/rankings').json['players'][:2]
         item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
         data={'link':'https://lichess.org/abcdefgh','first_player':players[0]['id'],'second_player':players[1]['id'],'consent':True}
         self.post('/api/users',{'username':'member','password':'long-password-for-test','role':'member'})
         member=self.app.test_client();csrf=self.login('member',member)
-        with patch('lichess_import.fetch_games',return_value=[item]):
+        with patch('vereinswertung.lichess_import.fetch_games',return_value=[item]):
             loaded=self.post('/api/submissions/inspect',data,member,csrf)
         self.assertEqual(loaded.status_code,200,loaded.json)
         selected={'token':loaded.json['token'],'selected':['abcdefgh'],'consent':True}
         self.assertEqual(self.post('/api/lichess/preview',selected,member,csrf).status_code,403)
         self.assertEqual(self.post('/api/submissions',selected,member,csrf).status_code,200)
-        with patch('lichess_import.fetch_games',return_value=[item]):
+        with patch('vereinswertung.lichess_import.fetch_games',return_value=[item]):
             loaded=self.post('/api/submissions/inspect',data)
         before=[(p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
         preview=self.post('/api/lichess/preview',{**selected,'token':loaded.json['token']})
@@ -291,7 +289,7 @@ class AppTests(unittest.TestCase):
 
     def test_lichess_details_are_restricted_to_directors(self):
         from flask import g, request
-        import lichess_import
+        from vereinswertung import lichess_import
         trf_id=self.commit(self.payload())
         players=self.client.get('/api/rankings').json['players']
         item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white',
@@ -330,7 +328,7 @@ class AppTests(unittest.TestCase):
 
     def test_member_code_submission_and_director_approval(self):
         from unittest.mock import patch
-        import lichess_import
+        from vereinswertung import lichess_import
         self.commit(self.payload())
         invite=self.post('/api/invitations',{}).json['code']
         member=self.app.test_client()
@@ -346,12 +344,12 @@ class AppTests(unittest.TestCase):
         before=[(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']]
         item=lichess_import.parse_game({'id':'abcdefgh','variant':'standard','speed':'blitz','status':'mate','winner':'white','lastMoveAt':1758100000000,'players':{'white':{'user':{'name':'Anna'}},'black':{'user':{'name':'Ben'}}}})
         self.assertEqual(self.post('/api/submissions',data,member,csrf).status_code,400)
-        with patch('lichess_import.fetch_match',side_effect=ValueError('Lichess-Name nicht gefunden')):
+        with patch('vereinswertung.lichess_import.fetch_match',side_effect=ValueError('Lichess-Name nicht gefunden')):
             failed=self.post('/api/submissions/inspect',data,member,csrf)
         self.assertEqual(failed.status_code,400)
         self.assertEqual(member.get('/api/submissions').json['submissions'],[])
         extra={**item,'external_id':'ijklmnop'}
-        with patch('lichess_import.fetch_match',return_value=[item,extra]):
+        with patch('vereinswertung.lichess_import.fetch_match',return_value=[item,extra]):
             loaded=self.post('/api/submissions/inspect',data,member,csrf)
         self.assertEqual(loaded.status_code,200,loaded.json)
         selected={'token':loaded.json['token'],'selected':['abcdefgh'],'consent':True}
@@ -362,7 +360,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.post('/api/submissions',selected,member,csrf).status_code,400)
         self.assertEqual([(p['id'],p['rating'],p['games']) for p in self.client.get('/api/rankings').json['players']],before)
         self.assertNotIn('first',member.get('/api/submissions').json['submissions'][0]['payload'])
-        with patch('lichess_import.fetch_match',side_effect=AssertionError('Genehmigung muss geladene Auswahl verwenden')):
+        with patch('vereinswertung.lichess_import.fetch_match',side_effect=AssertionError('Genehmigung muss geladene Auswahl verwenden')):
             checked=self.post('/api/lichess/inspect',{'submission_id':sid})
         self.assertEqual(checked.status_code,200,checked.json)
         self.assertTrue(all(a.get('proposed') for a in checked.json['assignments']))

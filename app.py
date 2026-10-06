@@ -1,5 +1,5 @@
-"""Vereinswertung: public rankings, authenticated TRF import, NAS deployment."""
-import permissions
+"""Vereinswertung: protected rankings, authenticated TRF import, NAS deployment."""
+from vereinswertung import permissions
 import base64
 import csv
 import hashlib
@@ -22,15 +22,14 @@ from flask import Flask, g, jsonify, request, send_file, send_from_directory, re
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
-import storage
-from rating import ENGINE_VERSION
-import trf
-import lichess_import
-import chesscom_import
-import member_features
-import club_roster
-import progression
-
+from vereinswertung import storage
+from vereinswertung.rating import ENGINE_VERSION
+from vereinswertung import trf
+from vereinswertung import lichess_import
+from vereinswertung import chesscom_import
+from vereinswertung import member_features
+from vereinswertung import club_roster
+from vereinswertung import progression
 ROOT = Path(__file__).resolve().parent
 
 
@@ -713,7 +712,7 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "permissions.py", "trial.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["vereinswertung/__init__.py", "app.py", "vereinswertung/permissions.py", "vereinswertung/trial.py", "club_platform.py", "platform_manage.py", "vereinswertung/billing.py", "compose.platform.yaml", "platform.env.example", "vereinswertung/chesscom_import.py", "vereinswertung/progression.py", "vereinswertung/club_roster.py", "vereinswertung/member_features.py", "vereinswertung/lichess_import.py", "vereinswertung/storage.py", "vereinswertung/rating.py", "vereinswertung/trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 

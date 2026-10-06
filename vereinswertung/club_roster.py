@@ -6,9 +6,7 @@ import unicodedata
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-import storage
-
-
+from vereinswertung import storage
 def name_keys(name):
     name=name.casefold().replace('ß','ss')
     alternatives=[name,name.replace('ä','ae').replace('ö','oe').replace('ü','ue')]

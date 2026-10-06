@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from progression import calculate
+from vereinswertung.progression import calculate
 
 
 def games(count, day='2026-10-04', source='lichess', start=0, opponent=2, category='blitz'):

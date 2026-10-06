@@ -5,7 +5,7 @@ die vollständige Lizenz. Der öffentliche Link `/source.zip` liefert den
 entsprechenden Quellcode einschließlich der Build- und Betriebsdateien.
 Laufzeitdaten, Datenbanken, Einrichtungsschlüssel und Passwörter sind ausgeschlossen.
 
-`rating.py` ist eine Python-Übertragung der nachstehenden Scala-Implementierungen.
+`vereinswertung/rating.py` ist eine Python-Übertragung der nachstehenden Scala-Implementierungen.
 Es handelt sich nicht um einen Betrieb des vollständigen Lichess-Servers.
 
 ## scalachess (MIT)

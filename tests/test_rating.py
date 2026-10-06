@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import replace
-from rating import Rating, compute_one, live, game, regulate, COLOR_ADVANTAGE, SCALE, PERIODS_PER_DAY
+from vereinswertung.rating import Rating, compute_one, live, game, regulate, COLOR_ADVANTAGE, SCALE, PERIODS_PER_DAY
 
 
 class LichessReferenceTests(unittest.TestCase):

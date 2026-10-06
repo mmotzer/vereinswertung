@@ -3,9 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlparse, parse_qs
-import lichess_import
-
-
+from vereinswertung import lichess_import
 def exported(gid='abcdefgh', speed='blitz'):
     return {'id':gid,'variant':'standard','speed':speed,'status':'mate','winner':'white',
         'createdAt':1758100000000,'lastMoveAt':1758101000000,

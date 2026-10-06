@@ -7,12 +7,10 @@ import secrets
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from flask import g, jsonify
-import storage
-import lichess_import
-import chesscom_import
-import club_roster
-
-
+from vereinswertung import storage
+from vereinswertung import lichess_import
+from vereinswertung import chesscom_import
+from vereinswertung import club_roster
 def request_email(db, fallback=''):
     row = db.execute("SELECT value FROM settings WHERE key='request_email'").fetchone()
     return row[0] if row else fallback
