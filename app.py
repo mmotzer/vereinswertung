@@ -1,4 +1,5 @@
 """Vereinswertung: public rankings, authenticated TRF import, NAS deployment."""
+import permissions
 import base64
 import csv
 import hashlib
@@ -108,12 +109,12 @@ def create_app(config=None):
         token = request.cookies.get("club_session", "")
         if token:
             hashed = hashlib.sha256(token.encode()).hexdigest()
-            row = db().execute("""SELECT s.*,u.username,u.role,u.active FROM sessions s
+            row = db().execute("""SELECT s.*,u.username,u.role,u.active,u.permissions FROM sessions s
                                   JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.active=1""",
                                (hashed, time.time())).fetchone()
             if row:
                 g.session = row
-                g.user = {"id": row["user_id"], "username": row["username"], "role": row["role"]}
+                g.user = {"id": row["user_id"], "username": row["username"], "role": row["role"], "permissions": permissions.effective(row["role"],row["permissions"])}
         if not g.user and request.method in ("GET", "HEAD"):
             if request.path == "/static/index.html":
                 return redirect("/")
@@ -135,6 +136,18 @@ def create_app(config=None):
                     return jsonify(error="Bitte anmelden"), 401
                 if not secrets.compare_digest(request.headers.get("X-CSRF-Token", ""), g.session["csrf"]):
                     return jsonify(error="Sitzung abgelaufen. Bitte Seite neu laden."), 403
+
+        required = permissions.ENDPOINTS.get(request.endpoint)
+        if request.endpoint in ('lichess_inspect','lichess_preview','commit') and g.user:
+            data=request.get_json(silent=True) or {}
+            if not isinstance(data,dict):raise ValueError("Ungültige Anfrage")
+            payload=data
+            if request.endpoint != 'lichess_inspect':
+                preview_row=db().execute('SELECT payload FROM previews WHERE token=? AND owner=?',(data.get('token'),g.user['id'])).fetchone()
+                payload=json.loads(preview_row['payload']) if preview_row else {}
+            required='approve' if payload.get('submission_id') is not None else 'import'
+        if required and g.user and not g.user['permissions'][required]:
+            return jsonify(error='Berechtigung fehlt: '+permissions.LABELS[required]),403
 
     @app.after_request
     def headers(response):
@@ -163,15 +176,15 @@ def create_app(config=None):
         return jsonify(error="Die Anfrage konnte nicht gespeichert werden. Bitte erneut versuchen."), 500
 
     def admin():
-        if not g.user or g.user["role"] != "admin":
+        if not g.user or not g.user["permissions"].get(permissions.ENDPOINTS.get(request.endpoint,"manage_users"),False):
             from werkzeug.exceptions import Forbidden
             raise Forbidden("Nur für Administratoren")
 
     def is_director():
-        return bool(g.user and g.user["role"] in ("director", "admin"))
+        return bool(g.user and (g.user["permissions"]["import"] or g.user["permissions"]["approve"]))
 
     def director():
-        if not is_director():
+        if not g.user or not (g.user["permissions"].get(permissions.ENDPOINTS.get(request.endpoint)) if request.endpoint in permissions.ENDPOINTS else is_director()):
             from werkzeug.exceptions import Forbidden
             raise Forbidden("Nur für Turnierleiter und Administratoren")
 
@@ -272,7 +285,7 @@ def create_app(config=None):
             db().execute("INSERT INTO sessions VALUES(?,?,?,?)",
                          (hashlib.sha256(token.encode()).hexdigest(), user["id"], csrf, time.time() + 43200))
             storage.audit(db(), user["id"], "login", "Anmeldung")
-        response = jsonify(user={"id": user["id"], "username": user["username"], "role": user["role"]}, csrf=csrf)
+        response = jsonify(user={"id": user["id"], "username": user["username"], "role": user["role"], "permissions":permissions.effective(user["role"],user["permissions"])}, csrf=csrf)
         response.set_cookie("club_session", token, httponly=True, secure=app.config["SECURE_COOKIE"],
                             samesite="Strict", max_age=43200, path="/")
         return response
@@ -607,7 +620,7 @@ def create_app(config=None):
     @app.get("/api/users")
     def users():
         admin()
-        return jsonify(users=[dict(r) for r in db().execute("SELECT u.id,u.username,u.role,u.active,m.claimed,p.name player_name FROM users u LEFT JOIN club_members m ON m.user_id=u.id LEFT JOIN players p ON p.id=m.player_id ORDER BY username")])
+        return jsonify(permission_labels=permissions.LABELS, permission_defaults={role:permissions.effective(role) for role in permissions.DEFAULTS}, users=[{**dict(r),"overrides":json.loads(r["permissions"]),"permissions":permissions.effective(r["role"],r["permissions"])} for r in db().execute("SELECT u.id,u.username,u.role,u.active,u.permissions,m.claimed,p.name player_name FROM users u LEFT JOIN club_members m ON m.user_id=u.id LEFT JOIN players p ON p.id=m.player_id ORDER BY username")])
 
     @app.post("/api/users")
     def add_user():
@@ -633,7 +646,7 @@ def create_app(config=None):
             if not user:
                 raise ValueError("Zugang nicht gefunden")
             pending=db().execute('SELECT 1 FROM club_members WHERE user_id=? AND claimed IS NULL',(uid,)).fetchone()
-            if pending and ('active' in data or 'password' in data):
+            if pending and any(key in data for key in ('active','password','role','permissions')):
                 raise ValueError("Für diesen Spieler einen persönlichen Übernahmecode erzeugen")
             if "active" in data:
                 if not isinstance(data["active"], bool):
@@ -643,11 +656,20 @@ def create_app(config=None):
                 if user["role"] == "admin" and not data["active"] and db().execute("SELECT COUNT(*) FROM users WHERE role='admin' AND active=1").fetchone()[0] <= 1:
                     raise ValueError("Mindestens ein Administrator muss aktiv bleiben")
                 db().execute("UPDATE users SET active=? WHERE id=?", (int(data["active"]), uid))
+            if "role" in data:
+                if not isinstance(data['role'],str) or data['role'] not in permissions.DEFAULTS:raise ValueError('Ungültige Rolle')
+                db().execute('UPDATE users SET role=? WHERE id=?',(data['role'],uid))
+            if "permissions" in data:
+                overrides=permissions.validate(data['permissions'])
+                db().execute('UPDATE users SET permissions=? WHERE id=?',(json.dumps(overrides),uid))
+            administrators=db().execute("SELECT role,permissions FROM users WHERE role='admin' AND active=1").fetchall()
+            if not any(permissions.effective(r['role'],r['permissions'])['manage_users'] for r in administrators):
+                raise ValueError('Mindestens ein aktiver Administrator mit Zugangsverwaltung muss bleiben')
             if "password" in data:
                 _, pw = credentials({"username": user["username"], "password": data["password"]})
                 db().execute("UPDATE users SET password=? WHERE id=?", (generate_password_hash(pw), uid))
             db().execute("DELETE FROM sessions WHERE user_id=?", (uid,))
-            storage.audit(db(), g.user["id"], "user_update", f"Zugang {uid} geändert")
+            storage.audit(db(), g.user["id"], "user_update", f"Zugang {uid} geändert: "+json.dumps({k:v for k,v in data.items() if k in ("role","permissions","active")},ensure_ascii=False))
             db().commit()
         except Exception:
             db().rollback()
@@ -682,13 +704,13 @@ def create_app(config=None):
     return app
 
 
-SOURCE_FILES = ["app.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
+SOURCE_FILES = ["app.py", "permissions.py", "club_platform.py", "platform_manage.py", "billing.py", "compose.platform.yaml", "platform.env.example", "chesscom_import.py", "progression.py", "club_roster.py", "member_features.py", "lichess_import.py", "storage.py", "rating.py", "trf.py", "manage.py", "requirements.txt", "Dockerfile",
                 "compose.yaml", "compose.tunnel.yaml", ".env.example", "README.md", "NOTICE.md", "LICENSE", ".dockerignore", "package.py", ".gitignore"]
 
 
 def public_source_files():
     """Publish only known source paths, never arbitrary files added to folders."""
-    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "docs/PLATTFORM.md", "static/platform.html", "static/platform.js", "static/platform.css", "tests/test_platform.py", "static/app.js", "static/index.html",
+    names = SOURCE_FILES + ["docs/BERECHNUNG.md", "docs/PLATTFORM.md", "static/platform.html", "static/platform.js", "static/platform.css", "tests/test_platform.py", "tests/test_permissions.py", "static/app.js", "static/index.html",
         "static/style.css", "static/sw.js", "static/pwa.js", "static/offline.html", "static/offline.css", "static/icon-192.png", "static/icon-512.png", "static/icon.svg", "static/manifest.webmanifest", "static/login.html", "static/login.js",
         "static/print.html", "static/print.css", "static/print.js",
         "tests/test_app.py", "tests/test_rating.py", "tests/test_progression.py", "tests/test_chesscom.py", "tests/test_lichess.py", "tests/browser_fixture.py",

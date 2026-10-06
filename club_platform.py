@@ -22,6 +22,7 @@ from werkzeug.exceptions import HTTPException
 from app import ROOT, create_app, backup_database
 import storage
 import billing
+import permissions
 
 SCHEMA='''CREATE TABLE IF NOT EXISTS clubs(
  id TEXT PRIMARY KEY,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,email TEXT NOT NULL,
@@ -229,8 +230,8 @@ def create_platform(config=None):
         if path=='api/billing/portal' and request.method=='POST':
             token=hashlib.sha256(request.cookies.get('club_session','').encode()).hexdigest()
             with storage.open_db(child.config['DATABASE']) as db:
-                session=db.execute("SELECT s.csrf FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.role='admin' AND u.active=1",(token,time.time())).fetchone()
-            if not session or not secrets.compare_digest(session['csrf'],request.headers.get('X-CSRF-Token','')):return jsonify(error='Administrator-Anmeldung erforderlich'),403
+                session=db.execute("SELECT s.csrf,u.role,u.permissions FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.active=1",(token,time.time())).fetchone()
+            if not session or not permissions.effective(session['role'],session['permissions'])['billing'] or not secrets.compare_digest(session['csrf'],request.headers.get('X-CSRF-Token','')):return jsonify(error='Administrator-Anmeldung erforderlich'),403
             if not row['customer']:return jsonify(error='Für diesen Verein ist noch kein bezahltes Abo hinterlegt.'),400
             result=billing.request(app.config,'billing_portal/sessions',dict(customer=row['customer'],return_url=app.config['PUBLIC_ORIGIN']+prefix+'/'))
             if urlparse(result.get('url','')).hostname!='billing.stripe.com' or urlparse(result.get('url','')).scheme!='https':raise ValueError('Ungültige Zahlungsadresse')

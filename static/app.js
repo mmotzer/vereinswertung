@@ -43,12 +43,15 @@ async function busy(button, fn) {
 function empty(title, text, action = '') {
   return `<div class="empty"><div class="empty-icon" aria-hidden="true">♙</div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p>${action}</div>`;
 }
+const can = key => !!user?.permissions?.[key];
+const canAdmin = () => ['manage_users','manage_members','settings','audit','backup'].some(can);
 function refreshAuth() {
-  $('#billing-button').hidden = !mountApp || user?.role !== 'admin';
+  $('#billing-button').hidden = !mountApp || !can('billing');
   $$('.auth-only').forEach(el => { el.hidden = !user; });
-  $('.nav [data-page="submissions"]').textContent = ['director','admin'].includes(user?.role) ? 'Einreichungen' : 'Einreichen';
-  $$('.director-only').forEach(el => { el.hidden = !['director', 'admin'].includes(user?.role); });
-  $$('.admin-only').forEach(el => { el.hidden = user?.role !== 'admin'; });
+  $('.nav [data-page="submissions"]').textContent = (can('import') || can('approve')) ? 'Einreichungen' : 'Einreichen';
+  $$('.director-only').forEach(el => { el.hidden = !(can('import') || can('approve')); });
+  $$('.admin-only').forEach(el => { el.hidden = !canAdmin(); });
+  $$('[data-permission]').forEach(el => {el.hidden = !can(el.dataset.permission);});
   $('.nav').dataset.items=$$('.nav a').filter(el=>!el.hidden).length;
   $('#login-button').textContent = user ? user.username : needsSetup ? 'App einrichten' : 'Anmelden';
 }
@@ -176,10 +179,10 @@ function gameTable(games) {
 }
 async function showTournament(id) {
   const t = await api('/api/tournaments/' + id);
-  const canUndo = t.active && user && (user.role === 'admin' || t.owner === user.id);
-  $('#detail-content').innerHTML = `<div class="eyebrow">${catName(t.category)} · ${formatDate(t.date)}</div><h2>${escapeHtml(t.name)}</h2>${!t.active ? '<p class="note">Dieser Import wurde zurückgenommen und wird nicht gewertet.</p>' : `<h3>Wertungsänderungen im Turnier</h3>${changesTable(t.changes)}`}<h3>Partien</h3>${gameTable(t.games)}${t.skipped.length ? `<p class="note">${t.skipped.length} Einträge ohne gespielte Partie wurden nicht gewertet.</p>` : ''}${!t.active && user?.role === 'admin' ? '<hr><p class="note">Spieler bleiben in der Datenbank erhalten.</p><button class="button secondary" id="hide-tournament">Aus Übersicht entfernen</button>' : ''}${canUndo ? `<hr><button class="button secondary" id="undo-open">Import zurücknehmen</button>` : ''}`;
+  const canUndo = can('undo') && t.active && user && (user.role === 'admin' || t.owner === user.id);
+  $('#detail-content').innerHTML = `<div class="eyebrow">${catName(t.category)} · ${formatDate(t.date)}</div><h2>${escapeHtml(t.name)}</h2>${!t.active ? '<p class="note">Dieser Import wurde zurückgenommen und wird nicht gewertet.</p>' : `<h3>Wertungsänderungen im Turnier</h3>${changesTable(t.changes)}`}<h3>Partien</h3>${gameTable(t.games)}${t.skipped.length ? `<p class="note">${t.skipped.length} Einträge ohne gespielte Partie wurden nicht gewertet.</p>` : ''}${!t.active && can('manage_users') ? '<hr><p class="note">Spieler bleiben in der Datenbank erhalten.</p><button class="button secondary" id="hide-tournament">Aus Übersicht entfernen</button>' : ''}${canUndo ? `<hr><button class="button secondary" id="undo-open">Import zurücknehmen</button>` : ''}`;
   $('#detail-dialog').showModal();
-  if (!t.active && user?.role === 'admin') $('#hide-tournament').addEventListener('click', event => busy(event.currentTarget, async () => {
+  if (!t.active && can('manage_users')) $('#hide-tournament').addEventListener('click', event => busy(event.currentTarget, async () => {
     await api(`/api/tournaments/${t.id}/hide`, {});
     $('#detail-dialog').close();
     toast('Turnier ausgeblendet. Spieler bleiben erhalten.');
@@ -278,16 +281,26 @@ $('#import-form').addEventListener('submit', event => {
 });
 
 async function loadAdmin() {
-  const [accounts, audit, settings, roster] = await Promise.all([api('/api/users'), api('/api/audit'), api('/api/settings'), api('/api/club-members')]);
+  const [accounts, audit, settings, roster] = await Promise.all([can('manage_users') ? api('/api/users') : {users:[]}, can('audit') ? api('/api/audit') : {events:[]}, can('settings') ? api('/api/settings') : {}, can('manage_members') ? api('/api/club-members') : {members:[]}]);
   const pending=roster.members.filter(m => m.claimed === null);
   $('#invitation-player').innerHTML='<option value="">Spieler auswählen</option>'+pending.map(m => `<option value="${m.player_id}">${escapeHtml(m.name)}</option>`).join('');
   $('#club-member-list').innerHTML=roster.members.map(m => `<div class="user-row"><div><strong>${escapeHtml(m.name)}</strong><small>${m.claimed === null ? 'Noch nicht beansprucht' : 'Übernommen · '+escapeHtml(m.username)}</small></div>${m.claimed === null ? `<button class="button secondary" data-claim-player="${m.player_id}">Übernahmecode vorbereiten</button>` : ''}</div>`).join('');
   $('#request-email').value = settings.request_email;
-  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.filter(u => !u.player_name || u.claimed !== null).map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${roleName(u.role)} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
+  $('#user-list').innerHTML = '<h2>Bestehende Zugänge</h2>' + accounts.users.filter(u => !u.player_name || u.claimed !== null).map(u => `<div class="user-row"><div><strong>${escapeHtml(u.username)}</strong><small>${roleName(u.role)} · ${u.active ? 'Aktiv' : 'Gesperrt'}</small></div><div class="user-actions"><button class="button secondary" data-rights-user="${u.id}">Rolle und Rechte</button><button class="button secondary" data-reset-user="${u.id}" data-username="${escapeHtml(u.username)}">Passwort setzen</button>${u.id !== user.id ? `<button class="button secondary" data-toggle-user="${u.id}" data-active="${u.active}">${u.active ? 'Sperren' : 'Aktivieren'}</button>` : ''}</div></div>`).join('');
   $('#audit-list').innerHTML = audit.events.map(e => `<div class="audit-item">${escapeHtml(new Date(e.created * 1000).toLocaleString('de-DE'))} · ${escapeHtml(e.username)} · ${escapeHtml(e.detail)}</div>`).join('');
   $$('[data-toggle-user]').forEach(button => button.addEventListener('click', () => busy(button, async () => {
     await api('/api/users/' + button.dataset.toggleUser, {active: button.dataset.active !== '1'}); await loadAdmin();
   })));
+  $$('[data-rights-user]').forEach(button => button.addEventListener('click', () => {
+    const target=accounts.users.find(u=>u.id===Number(button.dataset.rightsUser));
+    $('#rights-user').value=target.id;$('#rights-name').textContent=target.username;
+    $('#rights-role').value=target.role;
+    $('#rights-fields').innerHTML=Object.entries(accounts.permission_labels).map(([key,label])=>`<label>${escapeHtml(label)}<select data-right="${key}"><option value="default">Rollenvorlage</option><option value="allow">Erlauben</option><option value="deny">Verweigern</option></select></label>`).join('');
+    $$('[data-right]').forEach(select=>select.value=target.overrides[select.dataset.right]===true?'allow':target.overrides[select.dataset.right]===false?'deny':'default');
+    const showDefaults = () => $$('[data-right]').forEach(select => {select.options[0].textContent='Rollenvorlage: '+(accounts.permission_defaults[$('#rights-role').value][select.dataset.right] ? 'erlaubt' : 'verweigert');});
+    $('#rights-role').onchange=showDefaults;showDefaults();
+    $('#rights-dialog').showModal();
+  }));
   $$('[data-reset-user]').forEach(button => button.addEventListener('click', () => {
     resetTarget = Number(button.dataset.resetUser); $('#reset-name').textContent = button.dataset.username;
     $('#reset-form').reset(); $('#reset-dialog').showModal();
@@ -328,14 +341,17 @@ $('#hide-progress').addEventListener('change', event => {
 async function navigate() {
   let page = location.hash.slice(1) || 'rankings';
   if (!['progress','rankings','tournaments','import','submissions','help','admin'].includes(page)) page = 'rankings';
-  if ((page === 'import' && !['director', 'admin'].includes(user?.role)) || (page === 'admin' && user?.role !== 'admin')) { page = 'rankings'; location.hash = '#rankings'; }
+  if ((page === 'import' && !(can('import') || can('approve'))) || (page === 'admin' && !canAdmin())) { page = 'rankings'; location.hash = '#rankings'; }
   $$('.page').forEach(el => { el.hidden = el.id !== 'page-' + page; });
   $$('.nav a').forEach(el => { el.classList.toggle('active', el.dataset.page === page); if (el.dataset.page === page) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   try {
     if (page === 'progress') await loadProgress();
     if (page === 'rankings') await loadRanks();
     if (page === 'tournaments') await loadTournaments();
-    if (page === 'admin') await loadAdmin();
+    if (page === 'admin') { await loadAdmin();
+      for (const [id,key] of [['roster-form','manage_members'],['create-invitation','manage_members'],['request-email-form','settings'],['audit-list','audit']]) $('#'+id).closest('.card').hidden=!can(key);
+      $('[href$="/api/backup"]').closest('.card').hidden=!can('backup');
+    }
     if (page === 'submissions') await loadSubmissions();
   } catch (error) { toast(error.message, true); }
 }
@@ -401,8 +417,8 @@ async function loadSubmissions() {
   for (const id of ['submission-first','submission-second']) { const value=$('#'+id).value; $('#'+id).innerHTML=options; $('#'+id).value=value; }
   $('#account-player').innerHTML='<option value="">Vereinsspieler auswählen</option>'+people.players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}${p.username ? ' · '+escapeHtml(p.username) : ''}</option>`).join('');
   const names = Object.fromEntries(people.players.map(p => [p.id,p.name]));
-  const review = ['admin','director'].includes(user?.role);
-  $('#submission-list').innerHTML='<h2>'+ (review ? 'Einreichungen zur Prüfung' : 'Deine Einreichungen')+'</h2>'+ (data.submissions.length ? data.submissions.map(s => `<article class="card"><span class="badge">${({pending:'Wartet auf Prüfung',approved:'Genehmigt',rejected:'Abgelehnt'})[s.status]}</span><h3>${escapeHtml(names[s.payload.first_player] || 'Spieler')} – ${escapeHtml(names[s.payload.second_player] || 'Spieler')}</h3><p>${formatDate(s.payload.day)}${review ? ' · Eingereicht von '+escapeHtml(s.username) : ''}</p>${s.response ? '<p class="note">'+escapeHtml(s.response)+'</p>' : ''}${review && s.status==='pending' ? `<div class="user-actions"><button class="button" data-review-submission="${s.id}">Partien prüfen →</button><button class="button secondary" data-reject-submission="${s.id}">Ablehnen</button></div>` : ''}</article>`).join('') : '<p class="muted">Noch keine Einreichungen.</p>');
+  const review = can('approve');
+  $('#submission-list').innerHTML='<h2>'+ (review ? 'Einreichungen zur Prüfung' : 'Deine Einreichungen')+'</h2>'+ (data.submissions.length ? data.submissions.map(s => `<article class="card"><span class="badge">${({pending:'Wartet auf Prüfung',approved:'Genehmigt',rejected:'Abgelehnt'})[s.status]}</span><h3>${escapeHtml(names[s.payload.first_player] || 'Spieler')} – ${escapeHtml(names[s.payload.second_player] || 'Spieler')}</h3><p>${formatDate(s.payload.day)}${review ? ' · Eingereicht von '+escapeHtml(s.username) : ''}</p>${s.response ? '<p class="note">'+escapeHtml(s.response)+'</p>' : ''}${can('approve') && s.status==='pending' ? `<div class="user-actions"><button class="button" data-review-submission="${s.id}">Partien prüfen →</button><button class="button secondary" data-reject-submission="${s.id}">Ablehnen</button></div>` : ''}</article>`).join('') : '<p class="muted">Noch keine Einreichungen.</p>');
   $('#submission-day').value ||= new Date().toLocaleDateString('sv-SE');
 }
 let submissionToken=null,submissionGeneration=0;
@@ -500,3 +516,10 @@ $('#roster-form').addEventListener('submit', event => {
     await api('/api/club-members',{members});event.target.reset();await loadAdmin();toast('Mitgliederkonten vorbereitet.');
   });
 });
+
+$('#rights-form').addEventListener('submit',event=>{event.preventDefault();busy(event.submitter,async()=>{
+ const id=Number($('#rights-user').value),overrides={};
+ $$('[data-right]').forEach(select=>{if(select.value!=='default')overrides[select.dataset.right]=select.value==='allow';});
+ await api('/api/users/'+id,{role:$('#rights-role').value,permissions:overrides});$('#rights-dialog').close();
+ if(id===user.id){location.reload();return;}await loadAdmin();toast('Rechte gespeichert. Bestehende Sitzungen wurden beendet.');
+});});

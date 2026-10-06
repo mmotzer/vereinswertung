@@ -35,3 +35,9 @@ Sichert Registry und alle provisionierten Vereinsdatenbanken unter `data/platfor
 ## Vor dem bezahlten Livebetrieb
 
 Preise, Betreiberangaben und neue Plattformadresse festlegen. Stripe-Testlauf einschließlich Webhooks und Kundenportal durchführen. Backupjob und Wiederherstellung prüfen. Ein zusätzlicher Verein muss mit unabhängigen Mitgliedern und Importen end-to-end getestet werden. Erst danach die öffentliche Registrierung und Livezahlungen freischalten. Die bisherige SK1912-Produktion wird durch den lokalen Umbau nicht verändert.
+
+## Rollen und individuelle Rechte
+
+Unter „Zugänge → Rolle und Rechte“ können Berechtigungen einzeln erlaubt, verweigert oder aus der Rollenvorlage übernommen werden. Individuelle Vorgaben bleiben bei einem Rollenwechsel bestehen. „Zugänge, Rollen und Rechte verwalten“ erlaubt das Vergeben aller Rechte und sollte nur vertrauten Personen gegeben werden. Mindestens ein aktiver Administrator mit diesem Recht bleibt zwingend erhalten. Nicht beanspruchte Mitgliedskonten werden erst nach ihrer Übernahme bearbeitet.
+
+Rechte umfassen Lesen, Einreichen, direkte Importe, Genehmigung, Rücknahme eigener Importe, Mitglieder und Codes, Zugänge, Einstellungen, Export/Druck, Sicherungen, Protokoll und Abos. Administratoren mit Rücknahmerecht dürfen auch fremde Importe zurücknehmen. Rechte werden in der jeweiligen Vereinsdatenbank gespeichert und bei jeder Anfrage serverseitig geprüft. Änderungen an Zugängen werden protokolliert und beenden deren bestehende Anmeldesitzungen.

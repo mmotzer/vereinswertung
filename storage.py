@@ -110,6 +110,8 @@ def initialize(path):
                 raise
             finally:
                 db.execute('PRAGMA foreign_keys=ON')
+        if 'permissions' not in {r[1] for r in db.execute('PRAGMA table_info(users)')}:
+            db.execute("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
         if 'sequence' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
             db.execute('ALTER TABLE tournaments ADD COLUMN sequence INTEGER')
         if 'hidden' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:

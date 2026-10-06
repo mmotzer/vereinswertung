@@ -302,7 +302,7 @@ class AppTests(unittest.TestCase):
             tid=storage.import_tournament(db,item,owner)
         def viewer_for_test():
             if request.headers.get('X-Test-Viewer') and g.user:
-                g.user={**g.user,'role':'viewer'}
+                g.user={**g.user,'role':'viewer','permissions':{key:key=='view' for key in g.user['permissions']}}
         self.app.before_request_funcs[None].append(viewer_for_test)
         headers={'X-Test-Viewer':'1'}
         self.assertEqual(set(t['id'] for t in self.client.get('/api/tournaments',headers=headers).json['tournaments']),{trf_id,tid})
@@ -389,7 +389,7 @@ class AppTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT user_id FROM sessions').fetchone()[0],7)
             self.assertEqual(db.execute('SELECT owner FROM tournaments').fetchone()[0],7)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM games').fetchone()[0],2)
-            db.execute("INSERT INTO users VALUES(8,'newmember','hash','member',1,1)")
+            db.execute("INSERT INTO users(id,username,password,role,active,created) VALUES(8,'newmember','hash','member',1,1)")
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
         self.assertTrue(list((Path(path).parent/'backups').glob('before-members-*.sqlite')))
 
