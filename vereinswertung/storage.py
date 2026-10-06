@@ -1,14 +1,15 @@
 """SQLite is the single source of truth; imports and replay are atomic."""
+
 import difflib
 import hashlib
 import json
 import sqlite3
 import time
-from contextlib import contextmanager, closing
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from vereinswertung.rating import Rating, ENGINE_VERSION, game, live
+from vereinswertung.rating import ENGINE_VERSION, Rating, game, live
 from vereinswertung.trf import normalize
 
 SCHEMA = """
@@ -85,57 +86,103 @@ def initialize(path):
     with open_db(path) as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
-        user_schema = db.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
+        user_schema = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name='users'"
+        ).fetchone()[0]
         if "'member'" not in user_schema:
             # Preserve IDs and all referencing records; snapshot before rebuilding the role constraint.
             db.commit()
-            backup = Path(path).parent / 'backups' / ('before-members-' + str(time.time_ns()) + '.sqlite')
+            backup = (
+                Path(path).parent
+                / "backups"
+                / ("before-members-" + str(time.time_ns()) + ".sqlite")
+            )
             backup.parent.mkdir(exist_ok=True)
             with closing(sqlite3.connect(backup)) as snapshot:
                 db.backup(snapshot)
-            db.execute('PRAGMA foreign_keys=OFF')
+            db.execute("PRAGMA foreign_keys=OFF")
             try:
-                db.execute('BEGIN IMMEDIATE')
+                db.execute("BEGIN IMMEDIATE")
                 db.execute("""CREATE TABLE users_new(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
                     password TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','director','member')),
                     active INTEGER NOT NULL DEFAULT 1, created REAL NOT NULL)""")
-                db.execute('INSERT INTO users_new SELECT * FROM users')
-                db.execute('DROP TABLE users')
-                db.execute('ALTER TABLE users_new RENAME TO users')
-                if db.execute('PRAGMA foreign_key_check').fetchone():
-                    raise ValueError('Zugangsmigration konnte nicht sicher abgeschlossen werden')
+                db.execute("INSERT INTO users_new SELECT * FROM users")
+                db.execute("DROP TABLE users")
+                db.execute("ALTER TABLE users_new RENAME TO users")
+                if db.execute("PRAGMA foreign_key_check").fetchone():
+                    raise ValueError(
+                        "Zugangsmigration konnte nicht sicher abgeschlossen werden"
+                    )
                 db.commit()
             except Exception:
                 db.rollback()
                 raise
             finally:
-                db.execute('PRAGMA foreign_keys=ON')
-        if 'permissions' not in {r[1] for r in db.execute('PRAGMA table_info(users)')}:
-            db.execute("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
-        if 'sequence' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
-            db.execute('ALTER TABLE tournaments ADD COLUMN sequence INTEGER')
-        if 'hidden' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
-            db.execute('ALTER TABLE tournaments ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
-        if 'source' not in {r[1] for r in db.execute('PRAGMA table_info(tournaments)')}:
-            db.execute("ALTER TABLE tournaments ADD COLUMN source TEXT NOT NULL DEFAULT 'trf'")
-            db.execute("UPDATE tournaments SET source='lichess' WHERE length(original)=16 AND original='lichess:' || substr(filename,1,8) AND filename=substr(original,9) || '.lichess'")
-        db.execute('UPDATE tournaments SET sequence=id WHERE sequence IS NULL')
-        if 'player_id' not in {r[1] for r in db.execute('PRAGMA table_info(invitations)')}:
-            db.execute('ALTER TABLE invitations ADD COLUMN player_id INTEGER REFERENCES players(id)')
-        if 'external_id' not in {r[1] for r in db.execute('PRAGMA table_info(games)')}:
+                db.execute("PRAGMA foreign_keys=ON")
+        if "permissions" not in {
+            r[1] for r in db.execute("PRAGMA table_info(users)")
+        }:
+            db.execute(
+                "ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'"
+            )
+        if "sequence" not in {
+            r[1] for r in db.execute("PRAGMA table_info(tournaments)")
+        }:
+            db.execute("ALTER TABLE tournaments ADD COLUMN sequence INTEGER")
+        if "hidden" not in {
+            r[1] for r in db.execute("PRAGMA table_info(tournaments)")
+        }:
+            db.execute(
+                "ALTER TABLE tournaments ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
+            )
+        if "source" not in {
+            r[1] for r in db.execute("PRAGMA table_info(tournaments)")
+        }:
+            db.execute(
+                "ALTER TABLE tournaments ADD COLUMN source TEXT NOT NULL DEFAULT 'trf'"
+            )
+            db.execute(
+                "UPDATE tournaments SET source='lichess' WHERE length(original)=16 AND original='lichess:' || substr(filename,1,8) AND filename=substr(original,9) || '.lichess'"
+            )
+        db.execute("UPDATE tournaments SET sequence=id WHERE sequence IS NULL")
+        if "player_id" not in {
+            r[1] for r in db.execute("PRAGMA table_info(invitations)")
+        }:
+            db.execute(
+                "ALTER TABLE invitations ADD COLUMN player_id INTEGER REFERENCES players(id)"
+            )
+        if "external_id" not in {
+            r[1] for r in db.execute("PRAGMA table_info(games)")
+        }:
             db.commit()
-            backup=Path(path).parent/'backups'/('before-lichess-days-'+str(time.time_ns())+'.sqlite')
+            backup = (
+                Path(path).parent
+                / "backups"
+                / ("before-lichess-days-" + str(time.time_ns()) + ".sqlite")
+            )
             backup.parent.mkdir(exist_ok=True)
-            with closing(sqlite3.connect(backup)) as snapshot: db.backup(snapshot)
-            db.execute('ALTER TABLE games ADD COLUMN external_id TEXT')
-            db.execute('ALTER TABLE games ADD COLUMN original_sequence INTEGER')
-            db.execute("UPDATE games SET original_sequence=(SELECT sequence FROM tournaments WHERE id=games.tournament_id)")
-            db.execute("UPDATE games SET external_id=(SELECT substr(original,9) FROM tournaments WHERE id=games.tournament_id AND source='lichess')")
+            with closing(sqlite3.connect(backup)) as snapshot:
+                db.backup(snapshot)
+            db.execute("ALTER TABLE games ADD COLUMN external_id TEXT")
+            db.execute("ALTER TABLE games ADD COLUMN original_sequence INTEGER")
+            db.execute(
+                "UPDATE games SET original_sequence=(SELECT sequence FROM tournaments WHERE id=games.tournament_id)"
+            )
+            db.execute(
+                "UPDATE games SET external_id=(SELECT substr(original,9) FROM tournaments WHERE id=games.tournament_id AND source='lichess')"
+            )
             group_lichess_days(db)
             bump(db)
-        for alias in db.execute("SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"):
-            db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(alias['player_id'],alias['name'][9:]))
-        db.execute("INSERT OR IGNORE INTO ratings SELECT id,'bullet',1500,500,0.09,0,NULL FROM players")
+        for alias in db.execute(
+            "SELECT player_id,name FROM aliases WHERE name LIKE 'Lichess: %' ORDER BY name_key"
+        ):
+            db.execute(
+                "INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)",
+                (alias["player_id"], alias["name"][9:]),
+            )
+        db.execute(
+            "INSERT OR IGNORE INTO ratings SELECT id,'bullet',1500,500,0.09,0,NULL FROM players"
+        )
 
 
 @contextmanager
@@ -149,12 +196,16 @@ def open_db(path):
 
 
 def audit(db, user, action, detail):
-    db.execute("INSERT INTO audit(user_id,action,detail,created) VALUES(?,?,?,?)",
-               (user, action, detail, time.time()))
+    db.execute(
+        "INSERT INTO audit(user_id,action,detail,created) VALUES(?,?,?,?)",
+        (user, action, detail, time.time()),
+    )
 
 
 def revision(db):
-    return db.execute("SELECT value FROM meta WHERE key='revision'").fetchone()[0]
+    return db.execute("SELECT value FROM meta WHERE key='revision'").fetchone()[
+        0
+    ]
 
 
 def bump(db):
@@ -162,32 +213,65 @@ def bump(db):
 
 
 def suggestions(db, parsed):
-    existing = {r["name_key"]: dict(r) for r in db.execute(
-        "SELECT a.name_key,a.player_id,p.name FROM aliases a JOIN players p ON p.id=a.player_id")}
-    for account in db.execute('SELECT a.player_id,a.username,p.name FROM lichess_accounts a JOIN players p ON p.id=a.player_id'):
-        key=normalize('Lichess: '+account['username'])
-        existing.setdefault(key,{'name_key':key,'player_id':account['player_id'],'name':account['name']})
+    existing = {
+        r["name_key"]: dict(r)
+        for r in db.execute(
+            "SELECT a.name_key,a.player_id,p.name FROM aliases a JOIN players p ON p.id=a.player_id"
+        )
+    }
+    for account in db.execute(
+        "SELECT a.player_id,a.username,p.name FROM lichess_accounts a JOIN players p ON p.id=a.player_id"
+    ):
+        key = normalize("Lichess: " + account["username"])
+        existing.setdefault(
+            key,
+            {
+                "name_key": key,
+                "player_id": account["player_id"],
+                "name": account["name"],
+            },
+        )
     result = []
     for p in parsed["players"]:
         key = normalize(p["name"])
         exact = existing.get(key)
-        matches = difflib.get_close_matches(key, existing, n=3, cutoff=0.65) if not exact else []
-        result.append({"number": p["number"], "name": p["name"],
-                       "player_id": exact["player_id"] if exact else None,
-                       "matched_name": exact["name"] if exact else None,
-                       "suggestions": list({existing[k]["player_id"]: existing[k] for k in matches}.values())})
+        matches = (
+            difflib.get_close_matches(key, existing, n=3, cutoff=0.65)
+            if not exact
+            else []
+        )
+        result.append(
+            {
+                "number": p["number"],
+                "name": p["name"],
+                "player_id": exact["player_id"] if exact else None,
+                "matched_name": exact["name"] if exact else None,
+                "suggestions": list(
+                    {
+                        existing[k]["player_id"]: existing[k] for k in matches
+                    }.values()
+                ),
+            }
+        )
     return result
 
 
 def timestamp(day):
     # TRF has no finish times. All rounds on a date share a deterministic noon UTC.
-    return datetime.fromisoformat(day).replace(hour=12, tzinfo=timezone.utc).timestamp()
+    return (
+        datetime.fromisoformat(day)
+        .replace(hour=12, tzinfo=timezone.utc)
+        .timestamp()
+    )
 
 
 def validate_payload(payload):
     if payload.get("category") not in ("bullet", "blitz", "rapid"):
         raise ValueError("Bitte Bullet, Blitz oder Schnellschach auswählen")
-    if not isinstance(payload.get("name"), str) or not 1 <= len(payload["name"].strip()) <= 120:
+    if (
+        not isinstance(payload.get("name"), str)
+        or not 1 <= len(payload["name"].strip()) <= 120
+    ):
         raise ValueError("Turniername muss 1 bis 120 Zeichen haben")
     dates = payload.get("round_dates")
     if not isinstance(dates, list) or len(dates) != payload["parsed"]["rounds"]:
@@ -198,7 +282,9 @@ def validate_payload(payload):
         except (ValueError, TypeError):
             raise ValueError("Ungültiges Rundendatum")
         if parsed.isoformat() != d or parsed > date.today():
-            raise ValueError("Rundendatum muss gültig sein und darf nicht in der Zukunft liegen")
+            raise ValueError(
+                "Rundendatum muss gültig sein und darf nicht in der Zukunft liegen"
+            )
     if dates != sorted(dates):
         raise ValueError("Rundendaten müssen chronologisch sein")
 
@@ -212,87 +298,217 @@ def import_tournament(db, payload, owner):
     ids, used = {}, set()
     for p in payload["parsed"]["players"]:
         key = normalize(p["name"])
-        alias = db.execute("SELECT player_id FROM aliases WHERE name_key=?", (key,)).fetchone()
+        alias = db.execute(
+            "SELECT player_id FROM aliases WHERE name_key=?", (key,)
+        ).fetchone()
         chosen = mapping.get(str(p["number"]))
         if chosen not in (None, "", 0, "0"):
             try:
                 chosen = int(chosen)
             except (ValueError, TypeError):
                 raise ValueError("Ungültige Spielerzuordnung")
-            if not db.execute("SELECT id FROM players WHERE id=?", (chosen,)).fetchone():
+            if not db.execute(
+                "SELECT id FROM players WHERE id=?", (chosen,)
+            ).fetchone():
                 raise ValueError("Zugeordneter Spieler existiert nicht")
             if alias and alias[0] != chosen:
-                raise ValueError(f"{p['name']} ist bereits einem anderen Spieler zugeordnet")
+                raise ValueError(
+                    f"{p['name']} ist bereits einem anderen Spieler zugeordnet"
+                )
         else:
             chosen = alias[0] if alias else None
         if chosen is None:
-            chosen = db.execute("INSERT INTO players(name,created) VALUES(?,?)", (p["name"], time.time())).lastrowid
+            chosen = db.execute(
+                "INSERT INTO players(name,created) VALUES(?,?)",
+                (p["name"], time.time()),
+            ).lastrowid
         if chosen in used:
-            raise ValueError("Zwei Turnierteilnehmer dürfen nicht demselben Spieler zugeordnet sein")
+            raise ValueError(
+                "Zwei Turnierteilnehmer dürfen nicht demselben Spieler zugeordnet sein"
+            )
         used.add(chosen)
         ids[p["number"]] = chosen
-        if payload.get('external_id') and payload.get('source','lichess')=='lichess':
-            db.execute('INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)',(chosen,p['name'][9:]))
-        db.execute("INSERT OR IGNORE INTO aliases(name_key,name,player_id) VALUES(?,?,?)", (key, p["name"], chosen))
-    games = [{**g, "white": ids[g["white"]], "black": ids[g["black"]]} for g in payload["parsed"]["games"]]
+        if (
+            payload.get("external_id")
+            and payload.get("source", "lichess") == "lichess"
+        ):
+            db.execute(
+                "INSERT OR IGNORE INTO lichess_accounts VALUES(?,?)",
+                (chosen, p["name"][9:]),
+            )
+        db.execute(
+            "INSERT OR IGNORE INTO aliases(name_key,name,player_id) VALUES(?,?,?)",
+            (key, p["name"], chosen),
+        )
+    games = [
+        {**g, "white": ids[g["white"]], "black": ids[g["black"]]}
+        for g in payload["parsed"]["games"]
+    ]
     dates = payload["round_dates"]
     # Normalize row ordering and ignore filename/title for duplicate detection.
-    canonical = {"category": category, "dates": dates,
-                 "games": sorted(games, key=lambda g: (g["round"], g["white"], g["black"]))}
+    canonical = {
+        "category": category,
+        "dates": dates,
+        "games": sorted(
+            games, key=lambda g: (g["round"], g["white"], g["black"])
+        ),
+    }
     if payload.get("external_id"):
         canonical["external_id"] = payload["external_id"]
-    fingerprint = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True).encode()
+    ).hexdigest()
     raw_hash = hashlib.sha256(payload["text"].encode()).hexdigest()
-    if payload.get('external_id') and db.execute("SELECT 1 FROM games g JOIN tournaments t ON t.id=g.tournament_id WHERE t.active=1 AND g.external_id=?",(payload['external_id'],)).fetchone():
-        raise ValueError('Diese Online-Partie wurde bereits importiert')
-    if db.execute("SELECT id FROM tournaments WHERE active=1 AND (fingerprint=? OR (raw_hash=? AND category=?))",
-                  (fingerprint, raw_hash, category)).fetchone():
-        raise ValueError("Dieses Turnier wurde bereits importiert. Für eine Korrektur zuerst zurücknehmen.")
+    if (
+        payload.get("external_id")
+        and db.execute(
+            "SELECT 1 FROM games g JOIN tournaments t ON t.id=g.tournament_id WHERE t.active=1 AND g.external_id=?",
+            (payload["external_id"],),
+        ).fetchone()
+    ):
+        raise ValueError("Diese Online-Partie wurde bereits importiert")
+    if db.execute(
+        "SELECT id FROM tournaments WHERE active=1 AND (fingerprint=? OR (raw_hash=? AND category=?))",
+        (fingerprint, raw_hash, category),
+    ).fetchone():
+        raise ValueError(
+            "Dieses Turnier wurde bereits importiert. Für eine Korrektur zuerst zurücknehmen."
+        )
     # Interleaving multi-day events needs actual timing not available from a TRF.
-    for old in db.execute("SELECT date,end_date FROM tournaments WHERE active=1 AND category=?", (category,)):
+    for old in db.execute(
+        "SELECT date,end_date FROM tournaments WHERE active=1 AND category=?",
+        (category,),
+    ):
         overlap = dates[0] <= old["end_date"] and dates[-1] >= old["date"]
-        if overlap and (dates[0] != dates[-1] or old["date"] != old["end_date"]):
-            raise ValueError("Überlappende mehrtägige Turniere derselben Kategorie benötigen eindeutige Partiezeiten")
+        if overlap and (
+            dates[0] != dates[-1] or old["date"] != old["end_date"]
+        ):
+            raise ValueError(
+                "Überlappende mehrtägige Turniere derselben Kategorie benötigen eindeutige Partiezeiten"
+            )
     # A corrected reimport of the same named event retains its chronology slot.
-    previous = db.execute("""SELECT sequence FROM tournaments WHERE active=0 AND name=? AND category=? AND date=?
-                             ORDER BY id DESC LIMIT 1""", (payload['name'].strip(), category, dates[0])).fetchone()
-    sequence = previous[0] if previous else db.execute('SELECT COALESCE(MAX(sequence),0)+1 FROM tournaments').fetchone()[0]
-    if db.execute('SELECT 1 FROM tournaments WHERE active=1 AND sequence=?', (sequence,)).fetchone():
-        sequence = db.execute('SELECT COALESCE(MAX(sequence),0)+1 FROM tournaments').fetchone()[0]
-    tid = db.execute("""INSERT INTO tournaments(name,category,date,end_date,imported,owner,filename,original,
+    previous = db.execute(
+        """SELECT sequence FROM tournaments WHERE active=0 AND name=? AND category=? AND date=?
+                             ORDER BY id DESC LIMIT 1""",
+        (payload["name"].strip(), category, dates[0]),
+    ).fetchone()
+    sequence = (
+        previous[0]
+        if previous
+        else db.execute(
+            "SELECT COALESCE(MAX(sequence),0)+1 FROM tournaments"
+        ).fetchone()[0]
+    )
+    if db.execute(
+        "SELECT 1 FROM tournaments WHERE active=1 AND sequence=?", (sequence,)
+    ).fetchone():
+        sequence = db.execute(
+            "SELECT COALESCE(MAX(sequence),0)+1 FROM tournaments"
+        ).fetchone()[0]
+    tid = db.execute(
+        """INSERT INTO tournaments(name,category,date,end_date,imported,owner,filename,original,
                       raw_hash,fingerprint,engine,round_dates,skipped,sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                     (payload["name"].strip(), category, dates[0], dates[-1], time.time(), owner,
-                      payload["filename"], payload["text"], raw_hash, fingerprint, ENGINE_VERSION,
-                      json.dumps(dates), json.dumps(payload["parsed"]["skipped"]), sequence)).lastrowid
+        (
+            payload["name"].strip(),
+            category,
+            dates[0],
+            dates[-1],
+            time.time(),
+            owner,
+            payload["filename"],
+            payload["text"],
+            raw_hash,
+            fingerprint,
+            ENGINE_VERSION,
+            json.dumps(dates),
+            json.dumps(payload["parsed"]["skipped"]),
+            sequence,
+        ),
+    ).lastrowid
     if payload.get("external_id"):
-        db.execute("UPDATE tournaments SET source=? WHERE id=?", (payload.get('source','lichess'),tid))
+        db.execute(
+            "UPDATE tournaments SET source=? WHERE id=?",
+            (payload.get("source", "lichess"), tid),
+        )
     for g in games:
-        db.execute("INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
-                   (tid, g["round"], g["white"], g["black"], g["score"], payload.get("played", timestamp(dates[g["round"] - 1]))))
-    if payload.get('external_id'):
-        db.execute('UPDATE games SET external_id=?,original_sequence=? WHERE tournament_id=?',(payload['external_id'],sequence,tid))
+        db.execute(
+            "INSERT INTO games(tournament_id,round,white,black,score,played) VALUES(?,?,?,?,?,?)",
+            (
+                tid,
+                g["round"],
+                g["white"],
+                g["black"],
+                g["score"],
+                payload.get("played", timestamp(dates[g["round"] - 1])),
+            ),
+        )
+    if payload.get("external_id"):
+        db.execute(
+            "UPDATE games SET external_id=?,original_sequence=? WHERE tournament_id=?",
+            (payload["external_id"], sequence, tid),
+        )
         group_lichess_days(db)
-        tid=db.execute('SELECT tournament_id FROM games WHERE external_id=? ORDER BY id DESC LIMIT 1',(payload['external_id'],)).fetchone()[0]
+        tid = db.execute(
+            "SELECT tournament_id FROM games WHERE external_id=? ORDER BY id DESC LIMIT 1",
+            (payload["external_id"],),
+        ).fetchone()[0]
     rebuild(db)
     return tid
 
 
 def group_lichess_days(db):
     from zoneinfo import ZoneInfo
-    groups={}
-    for row in db.execute("SELECT t.id,t.category,t.source,g.played FROM tournaments t JOIN games g ON g.tournament_id=t.id WHERE t.active=1 AND t.source IN ('lichess','chesscom') ORDER BY t.sequence,t.id,g.id"):
-        day=datetime.fromtimestamp(row['played'],ZoneInfo('Europe/Berlin')).date().isoformat()
-        groups.setdefault((day,row['category'],row['source']),set()).add(row['id'])
-    for (day,category,source),ids in groups.items():
-        target=min(ids)
-        for tid in ids: db.execute('UPDATE games SET round=-id WHERE tournament_id=?',(tid,))
+
+    groups = {}
+    for row in db.execute(
+        "SELECT t.id,t.category,t.source,g.played FROM tournaments t JOIN games g ON g.tournament_id=t.id WHERE t.active=1 AND t.source IN ('lichess','chesscom') ORDER BY t.sequence,t.id,g.id"
+    ):
+        day = (
+            datetime.fromtimestamp(row["played"], ZoneInfo("Europe/Berlin"))
+            .date()
+            .isoformat()
+        )
+        groups.setdefault((day, row["category"], row["source"]), set()).add(
+            row["id"]
+        )
+    for (day, category, source), ids in groups.items():
+        target = min(ids)
         for tid in ids:
-            if tid!=target:
-                db.execute('UPDATE games SET tournament_id=? WHERE tournament_id=?',(target,tid))
-                db.execute('UPDATE tournaments SET active=0,hidden=1 WHERE id=?',(tid,))
-        games=list(db.execute('SELECT id FROM games WHERE tournament_id=? ORDER BY played,original_sequence,id',(target,)))
-        for number,row in enumerate(games,1): db.execute('UPDATE games SET round=? WHERE id=?',(number,row['id']))
-        db.execute("UPDATE tournaments SET name=?,date=?,end_date=?,round_dates=? WHERE id=?",(('Chess.com' if source=='chesscom' else 'Lichess')+'-Vereinspartien · '+day,day,day,json.dumps([day]*len(games)),target))
+            db.execute(
+                "UPDATE games SET round=-id WHERE tournament_id=?", (tid,)
+            )
+        for tid in ids:
+            if tid != target:
+                db.execute(
+                    "UPDATE games SET tournament_id=? WHERE tournament_id=?",
+                    (target, tid),
+                )
+                db.execute(
+                    "UPDATE tournaments SET active=0,hidden=1 WHERE id=?",
+                    (tid,),
+                )
+        games = list(
+            db.execute(
+                "SELECT id FROM games WHERE tournament_id=? ORDER BY played,original_sequence,id",
+                (target,),
+            )
+        )
+        for number, row in enumerate(games, 1):
+            db.execute(
+                "UPDATE games SET round=? WHERE id=?", (number, row["id"])
+            )
+        db.execute(
+            "UPDATE tournaments SET name=?,date=?,end_date=?,round_dates=? WHERE id=?",
+            (
+                ("Chess.com" if source == "chesscom" else "Lichess")
+                + "-Vereinspartien · "
+                + day,
+                day,
+                day,
+                json.dumps([day] * len(games)),
+                target,
+            ),
+        )
     return groups
 
 
@@ -311,61 +527,123 @@ def rebuild(db):
         wkey, bkey = (g["white"], cat), (g["black"], cat)
         w, b = state.get(wkey, Rating()), state.get(bkey, Rating())
         nw, nb = game(w, b, g["score"], cat, g["played"])
-        for pid, before, after in ((g["white"], live(w, g["played"]), nw), (g["black"], live(b, g["played"]), nb)):
-            db.execute("INSERT INTO history(game_id,player_id,before,after) VALUES(?,?,?,?)",
-                       (g["id"], pid, json.dumps(before.json()), json.dumps(after.json())))
+        for pid, before, after in (
+            (g["white"], live(w, g["played"]), nw),
+            (g["black"], live(b, g["played"]), nb),
+        ):
+            db.execute(
+                "INSERT INTO history(game_id,player_id,before,after) VALUES(?,?,?,?)",
+                (
+                    g["id"],
+                    pid,
+                    json.dumps(before.json()),
+                    json.dumps(after.json()),
+                ),
+            )
         state[wkey], state[bkey] = nw, nb
     for p in db.execute("SELECT id FROM players"):
         for cat in ("bullet", "blitz", "rapid"):
             r = state.get((p["id"], cat), Rating())
-            db.execute("INSERT INTO ratings VALUES(?,?,?,?,?,?,?)",
-                       (p["id"], cat, r.rating, r.rd, r.volatility, r.games, r.latest))
+            db.execute(
+                "INSERT INTO ratings VALUES(?,?,?,?,?,?,?)",
+                (p["id"], cat, r.rating, r.rd, r.volatility, r.games, r.latest),
+            )
 
 
 def rating_from_row(row):
-    return Rating(row["rating"], row["rd"], row["volatility"], row["games"], row["latest"])
+    return Rating(
+        row["rating"], row["rd"], row["volatility"], row["games"], row["latest"]
+    )
 
 
 def ranking(db, category, at=None):
     at = time.time() if at is None else at
     rows = []
-    for p in db.execute("""SELECT p.id,p.name,r.* FROM players p JOIN ratings r ON r.player_id=p.id
-                           WHERE r.category=? ORDER BY r.rating DESC,p.name""", (category,)):
+    for p in db.execute(
+        """SELECT p.id,p.name,r.* FROM players p JOIN ratings r ON r.player_id=p.id
+                           WHERE r.category=? ORDER BY r.rating DESC,p.name""",
+        (category,),
+    ):
         r = live(rating_from_row(p), at)
-        hist = db.execute("""SELECT h.before,h.after FROM history h JOIN games g ON g.id=h.game_id
+        hist = db.execute(
+            """SELECT h.before,h.after FROM history h JOIN games g ON g.id=h.game_id
                             JOIN tournaments t ON t.id=g.tournament_id WHERE h.player_id=? AND t.category=?
-                            ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC LIMIT 1""", (p["id"], category)).fetchone()
-        diff = int(json.loads(hist["after"])["rating"]) - int(json.loads(hist["before"])["rating"]) if hist else 0
-        rows.append({"id": p["id"], "name": p["name"], **r.json(), "display": int(r.rating),
-                     "provisional": r.rd >= 110, "rankable": r.rd <= 75, "diff": diff})
+                            ORDER BY g.played DESC,t.sequence DESC,t.id DESC,g.round DESC,g.id DESC LIMIT 1""",
+            (p["id"], category),
+        ).fetchone()
+        diff = (
+            int(json.loads(hist["after"])["rating"])
+            - int(json.loads(hist["before"])["rating"])
+            if hist
+            else 0
+        )
+        rows.append(
+            {
+                "id": p["id"],
+                "name": p["name"],
+                **r.json(),
+                "display": int(r.rating),
+                "provisional": r.rd >= 110,
+                "rankable": r.rd <= 75,
+                "diff": diff,
+            }
+        )
     return rows
 
 
 def tournament_detail(db, tid):
-    t = db.execute("""SELECT t.*,u.username FROM tournaments t JOIN users u ON u.id=t.owner
-                       WHERE t.id=?""", (tid,)).fetchone()
+    t = db.execute(
+        """SELECT t.*,u.username FROM tournaments t JOIN users u ON u.id=t.owner
+                       WHERE t.id=?""",
+        (tid,),
+    ).fetchone()
     if not t:
         raise ValueError("Turnier nicht gefunden")
     changes = {}
     games = []
-    for g in db.execute("""SELECT g.*,w.name white_name,b.name black_name FROM games g
+    for g in db.execute(
+        """SELECT g.*,w.name white_name,b.name black_name FROM games g
                            JOIN players w ON w.id=g.white JOIN players b ON b.id=g.black
-                           WHERE tournament_id=? ORDER BY round,g.id""", (tid,)):
+                           WHERE tournament_id=? ORDER BY round,g.id""",
+        (tid,),
+    ):
         entry = dict(g)
         for side in ("white", "black"):
-            h = db.execute("SELECT before,after FROM history WHERE game_id=? AND player_id=?", (g["id"], g[side])).fetchone()
+            h = db.execute(
+                "SELECT before,after FROM history WHERE game_id=? AND player_id=?",
+                (g["id"], g[side]),
+            ).fetchone()
             if h:
                 before, after = json.loads(h["before"]), json.loads(h["after"])
-                entry[side + "_diff"] = int(after["rating"]) - int(before["rating"])
+                entry[side + "_diff"] = int(after["rating"]) - int(
+                    before["rating"]
+                )
                 if g[side] not in changes:
-                    changes[g[side]] = {"id": g[side], "name": g[side + "_name"], "before": int(before["rating"]), "games": 0}
-                changes[g[side]].update(after=int(after["rating"]), rd=after["rd"])
+                    changes[g[side]] = {
+                        "id": g[side],
+                        "name": g[side + "_name"],
+                        "before": int(before["rating"]),
+                        "games": 0,
+                    }
+                changes[g[side]].update(
+                    after=int(after["rating"]), rd=after["rd"]
+                )
                 changes[g[side]]["games"] += 1
         games.append(entry)
     for c in changes.values():
         c["diff"] = c["after"] - c["before"]
-    return {"id": tid, "name": t["name"], "category": t["category"], "date": t["date"],
-            "end_date": t["end_date"], "active": bool(t["active"]), "owner": t["owner"],
-            "director": t["username"], "engine": t["engine"], "games": games,
-            "changes": sorted(changes.values(), key=lambda c: -c["after"]),
-            "skipped": json.loads(t["skipped"]), "round_dates": json.loads(t["round_dates"])}
+    return {
+        "id": tid,
+        "name": t["name"],
+        "category": t["category"],
+        "date": t["date"],
+        "end_date": t["end_date"],
+        "active": bool(t["active"]),
+        "owner": t["owner"],
+        "director": t["username"],
+        "engine": t["engine"],
+        "games": games,
+        "changes": sorted(changes.values(), key=lambda c: -c["after"]),
+        "skipped": json.loads(t["skipped"]),
+        "round_dates": json.loads(t["round_dates"]),
+    }
