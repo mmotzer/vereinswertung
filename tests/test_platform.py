@@ -143,6 +143,41 @@ class PlatformTests(unittest.TestCase):
         ).json
         self.assertEqual(manifest["scope"], "/v/club-one/")
 
+    def test_parallel_club_sessions_and_logout_are_independent(self):
+        self.seed("club-one", "a" * 32)
+        self.seed("club-two", "b" * 32)
+        sessions = {}
+        for slug in ("club-one", "club-two"):
+            response = self.client.post(
+                f"/v/{slug}/api/login",
+                json=dict(username="admin", password="test-password-123"),
+                headers=self.origin,
+            )
+            self.assertEqual(response.status_code, 200, response.json)
+            sessions[slug] = response.json["csrf"]
+        self.assertNotEqual(sessions["club-one"], sessions["club-two"])
+        # A valid CSRF token from another club must not end this session.
+        denied = self.client.post(
+            "/v/club-one/api/logout",
+            headers={**self.origin, "X-CSRF-Token": sessions["club-two"]},
+        )
+        self.assertEqual(denied.status_code, 403)
+        for slug in sessions:
+            self.assertEqual(
+                self.client.get(f"/v/{slug}/api/rankings").status_code, 200
+            )
+        response = self.client.post(
+            "/v/club-one/api/logout",
+            headers={**self.origin, "X-CSRF-Token": sessions["club-one"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.client.get("/v/club-one/api/rankings").status_code, 401
+        )
+        self.assertEqual(
+            self.client.get("/v/club-two/api/rankings").status_code, 200
+        )
+
     def test_separate_club_origins(self):
         config = dict(self.app.config)
         config["TENANT_DOMAIN"] = "clubs.example"
