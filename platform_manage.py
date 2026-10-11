@@ -3,12 +3,14 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import secrets
 import sqlite3
 import time
 from contextlib import closing
 from pathlib import Path
+from urllib.parse import urlparse
 
 from club_platform import create_platform
 
@@ -217,10 +219,157 @@ def import_club(app, file, slug, name, email, username):
     return "/v/" + slug + "/"
 
 
+def diagnose_platform(root, config):
+    """Inspect configuration and existing databases without provisioning clubs."""
+    root = Path(root).resolve()
+    checks = []
+
+    def record(name, status, detail):
+        checks.append(dict(check=name, status=status, detail=detail))
+
+    origin = urlparse(config.get("PUBLIC_ORIGIN", ""))
+    valid_origin = (
+        origin.scheme == "https"
+        and bool(origin.hostname)
+        and not origin.username
+        and not origin.password
+        and not origin.query
+        and not origin.fragment
+        and origin.path in ("", "/")
+    )
+    record(
+        "public_origin",
+        "ok" if valid_origin else "error",
+        "HTTPS-Plattformadresse gültig"
+        if valid_origin
+        else "PUBLIC_ORIGIN fehlt oder ist ungültig",
+    )
+    required = (
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_MONTH",
+        "STRIPE_PRICE_YEAR",
+    )
+    missing = [name for name in required if not config.get(name)]
+    record(
+        "billing_config",
+        "error" if missing else "ok",
+        "Fehlende Variablen: " + ", ".join(missing)
+        if missing
+        else "Konfiguration vorhanden; Gültigkeit bei Stripe nicht geprüft",
+    )
+    legal = Path(config["LEGAL_DIR"]) if config.get("LEGAL_DIR") else None
+    legal_ready = config.get("LEGAL_READY") in (True, "true")
+    legal_files = legal and all(
+        (legal / (name + ".html")).is_file()
+        for name in ("terms", "privacy", "imprint")
+    )
+    record(
+        "legal_files",
+        "ok" if legal_ready and legal_files else "error",
+        "Dateien vorhanden; Inhalt nicht rechtlich geprüft"
+        if legal_ready and legal_files
+        else "Rechtstexte oder LEGAL_READY fehlen",
+    )
+    record(
+        "tenant_origins",
+        "ok" if config.get("TENANT_DOMAIN") else "warning",
+        "Vereinsdomain konfiguriert; DNS/TLS nicht geprüft"
+        if config.get("TENANT_DOMAIN")
+        else "Pfadbetrieb teilt einen Browser-Ursprung",
+    )
+    record(
+        "trusted_proxy",
+        "ok" if config.get("TRUSTED_PROXY_IPS") else "warning",
+        "Proxy-Adressen konfiguriert; Richtigkeit nicht geprüft"
+        if config.get("TRUSTED_PROXY_IPS")
+        else "Keine vertrauenswürdigen Proxy-Adressen konfiguriert",
+    )
+
+    def read_database(file):
+        if not file.is_file() or not file.resolve().is_relative_to(root):
+            raise ValueError("Missing or unsafe database")
+        return closing(sqlite3.connect(file.as_uri() + "?mode=ro", uri=True))
+
+    def integrity(db):
+        if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError("Database integrity failed")
+        if db.execute("PRAGMA foreign_key_check").fetchone():
+            raise ValueError("Foreign keys failed")
+
+    try:
+        with read_database(root / "platform.sqlite") as db:
+            integrity(db)
+            rows = db.execute(
+                "SELECT id FROM clubs WHERE provisioned=1"
+            ).fetchall()
+        record("registry", "ok", "Vereinsregister lesbar und integer")
+        failed = 0
+        for (cid,) in rows:
+            try:
+                if not re.fullmatch(r"[a-f0-9]{32}", cid):
+                    raise ValueError("Invalid club identifier")
+                with read_database(
+                    root / "tenants" / cid / "club.sqlite"
+                ) as db:
+                    integrity(db)
+                    if not db.execute(
+                        "SELECT 1 FROM users WHERE role='admin' AND active=1"
+                    ).fetchone():
+                        raise ValueError("No active administrator")
+            except (OSError, sqlite3.Error, ValueError):
+                failed += 1
+        record(
+            "club_databases",
+            "error" if failed else "ok",
+            f"{len(rows)} Vereinsdatenbanken geprüft, {failed} fehlerhaft oder ohne aktiven Administrator",
+        )
+    except (OSError, sqlite3.Error, ValueError):
+        record(
+            "registry",
+            "error",
+            "Vereinsregister fehlt oder ist beschädigt; keine Daten angelegt",
+        )
+
+    snapshots = list((root / "backups").glob("*/complete.json"))
+    if not snapshots:
+        record(
+            "backup",
+            "warning",
+            "Keine abgeschlossene lokale Plattformsicherung vorhanden",
+        )
+    else:
+        try:
+            latest = max(snapshots, key=lambda file: file.stat().st_mtime)
+            verify_backup(latest.parent)
+            age = time.time() - latest.stat().st_mtime
+            record(
+                "backup",
+                "warning" if age > 48 * 3600 else "ok",
+                "Letzte lokale Sicherung geprüft"
+                + ("; älter als 48 Stunden" if age > 48 * 3600 else ""),
+            )
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError):
+            record(
+                "backup",
+                "error",
+                "Letzte abgeschlossene Sicherung ist beschädigt",
+            )
+    record(
+        "external_backup",
+        "warning",
+        "Externe Kopie und Wiederherstellungsprobe separat nachweisen",
+    )
+    return dict(
+        ok=not any(item["status"] == "error" for item in checks), checks=checks
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("doctor")
     commands.add_parser("backup")
     commands.add_parser("sync-billing")
     verify = commands.add_parser("verify-backup")
@@ -231,6 +380,10 @@ def main():
     for name in ("file", "slug", "name", "email", "admin"):
         migrate.add_argument("--" + name, required=True)
     args = parser.parse_args()
+    if args.command == "doctor":
+        report = diagnose_platform(args.data, os.environ)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if report["ok"] else 1)
     app = create_platform(dict(DATA_ROOT=args.data))
     if args.command == "backup":
         print(backup_platform(app))

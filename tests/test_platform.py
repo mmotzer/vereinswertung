@@ -12,6 +12,7 @@ from werkzeug.security import generate_password_hash
 from club_platform import create_platform
 from platform_manage import (
     backup_platform,
+    diagnose_platform,
     import_club,
     restore_backup,
     verify_backup,
@@ -177,6 +178,45 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(
             self.client.get("/v/club-two/api/rankings").status_code, 200
         )
+
+    def test_doctor_does_not_create_missing_database(self):
+        target = self.root / "missing"
+        report = diagnose_platform(target, self.app.config)
+        self.assertFalse(report["ok"])
+        self.assertFalse(target.exists())
+        self.assertNotIn("secret", json.dumps(report))
+
+    def test_doctor_detects_missing_provisioned_club_and_bad_backup(self):
+        self.seed("club-one", "a" * 32)
+        self.client.post(
+            "/v/club-one/api/login",
+            json=dict(username="admin", password="test-password-123"),
+            headers=self.origin,
+        )
+        snapshot = backup_platform(self.app)
+        report = diagnose_platform(self.root, self.app.config)
+        self.assertTrue(report["ok"], report)
+        with storage.open_db(
+            self.root / "tenants" / ("a" * 32) / "club.sqlite"
+        ) as db:
+            db.execute("UPDATE users SET active=0")
+        (snapshot / "platform.sqlite").write_bytes(b"broken")
+        report = diagnose_platform(self.root, self.app.config)
+        statuses = {item["check"]: item["status"] for item in report["checks"]}
+        self.assertFalse(report["ok"])
+        self.assertEqual(statuses["club_databases"], "error")
+        self.assertEqual(statuses["backup"], "error")
+
+    def test_doctor_rejects_incomplete_paid_launch_config(self):
+        config = dict(self.app.config)
+        config["PUBLIC_ORIGIN"] = "http://platform.example"
+        config["STRIPE_SECRET_KEY"] = ""
+        config["LEGAL_READY"] = False
+        report = diagnose_platform(self.root, config)
+        statuses = {item["check"]: item["status"] for item in report["checks"]}
+        self.assertFalse(report["ok"])
+        for check in ("public_origin", "billing_config", "legal_files"):
+            self.assertEqual(statuses[check], "error")
 
     def test_separate_club_origins(self):
         config = dict(self.app.config)

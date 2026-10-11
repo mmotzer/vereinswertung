@@ -61,3 +61,28 @@ python platform_manage.py --data data/platform-restored sync-billing
 Das Ziel der Wiederherstellung muss neu und leer sein. Alte Anmeldesitzungen werden verworfen. Bezahlte Vereine bleiben bis zum aktuellen Abo-Abgleich pausiert; dieser benötigt die gültige Stripe-Konfiguration. Automatische tägliche Backups zählen nur vollständig abgeschlossene Snapshots mit `complete.json`. Der laufende Plattformprozess gleicht Abos stündlich ab. Dieser Prozess ist für eine Instanz ausgelegt.
 
 Die ausführliche Bewertung und verbleibenden Startbedingungen stehen in [KONZEPT.md](KONZEPT.md).
+
+## Betriebsdiagnose
+
+```powershell
+python platform_manage.py --data data/platform doctor
+```
+
+Liest vorhandene Datenbanken, ohne Vereine anzulegen oder Wertungen zu ändern.
+Der JSON-Bericht enthält keine Schlüssel, E-Mail-Adressen oder Spielernamen.
+Exit-Code 1 bedeutet einen erkannten Fehler, Exit-Code 0 bedeutet keine
+erkannten Fehler; Warnungen bleiben im Bericht sichtbar.
+
+Geprüft werden HTTPS-Konfiguration, vorhandene Zahlungsvariablen und
+Rechtstextdateien, Vereinsregister, Integrität und Fremdschlüssel der
+provisionierten Vereinsdatenbanken sowie aktive Administratoren. Die jüngste
+abgeschlossene lokale Sicherung wird einschließlich Prüfsummen geprüft; ab
+48 Stunden Alter erscheint eine Warnung. Fehlende Sicherungen und fehlende
+Subdomain-/Proxy-Konfiguration werden ebenfalls ausgewiesen.
+
+Der Befehl validiert keine Stripe-Schlüssel beim Anbieter und prüft weder
+DNS/TLS noch die rechtliche Qualität der Texte. Externe Sicherungskopien,
+Wiederherstellungsproben und echte Zahlungsabläufe müssen separat nachgewiesen
+werden. Ein grüner Bericht ist keine allgemeine Freigabe zum Verkauf. Die
+Konfiguration muss wie beim Plattformprozess über Umgebungsvariablen gesetzt
+sein; der Befehl liest keine separate env-Datei automatisch.
