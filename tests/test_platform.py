@@ -180,6 +180,16 @@ class PlatformTests(unittest.TestCase):
             self.client.get("/v/club-two/api/rankings").status_code, 200
         )
 
+    def test_healthcheck_detects_unreadable_register(self):
+        self.assertEqual(self.client.get("/api/health").status_code, 200)
+        file = self.root / "platform.sqlite"
+        file.write_bytes(b"broken-register")
+        response = self.client.get("/api/health")
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json["ok"])
+        self.assertNotIn(str(self.root), json.dumps(response.json))
+        self.assertEqual(file.read_bytes(), b"broken-register")
+
     def test_doctor_does_not_create_missing_database(self):
         target = self.root / "missing"
         report = diagnose_platform(target, self.app.config)

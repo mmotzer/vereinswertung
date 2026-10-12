@@ -1433,6 +1433,19 @@ class AppTests(unittest.TestCase):
         self.assertEqual(client.get("/api/rankings").status_code, 200)
         self.assertNotIn(b"private-login", client.get("/").data)
 
+    def test_healthcheck_detects_missing_database_without_creating_it(self):
+        anonymous = self.app.test_client()
+        self.assertEqual(anonymous.get("/api/health").status_code, 200)
+        missing = Path(self.tmp.name) / "missing.sqlite"
+        self.app.config["DATABASE"] = str(missing)
+        response = anonymous.get("/api/health")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["status"], "unavailable")
+        self.assertFalse(missing.exists())
+        missing.write_bytes(b"broken-database")
+        self.assertEqual(anonymous.get("/api/health").status_code, 503)
+        self.assertEqual(missing.read_bytes(), b"broken-database")
+
     def test_password_change_revokes_other_sessions_after_failed_attempts(self):
         other = self.app.test_client()
         other_csrf = self.login("admin", other)

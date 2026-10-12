@@ -11,7 +11,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -271,8 +271,19 @@ def create_platform(config=None):
 
     @app.get("/api/health")
     def health():
-        with registry() as db:
-            db.execute("SELECT 1").fetchone()
+        try:
+            with closing(
+                sqlite3.connect(
+                    (root / "platform.sqlite").as_uri() + "?mode=ro",
+                    uri=True,
+                    timeout=3,
+                )
+            ) as db:
+                db.execute("SELECT id,status FROM clubs LIMIT 1").fetchone()
+        except (OSError, sqlite3.Error):
+            return jsonify(
+                ok=False, error="Vereinsregister nicht verfügbar"
+            ), 503
         return jsonify(ok=True)
 
     @app.get("/legal/<name>")

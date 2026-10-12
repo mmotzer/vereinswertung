@@ -367,7 +367,22 @@ def create_app(config=None):
 
     @app.get("/api/health")
     def health():
-        db().execute("SELECT 1").fetchone()
+        try:
+            with closing(
+                sqlite3.connect(
+                    Path(app.config["DATABASE"]).resolve().as_uri()
+                    + "?mode=ro",
+                    uri=True,
+                    timeout=3,
+                )
+            ) as connection:
+                connection.execute(
+                    "SELECT id,active FROM users LIMIT 1"
+                ).fetchone()
+        except (OSError, sqlite3.Error):
+            return jsonify(
+                status="unavailable", error="Vereinsdatenbank nicht verfügbar"
+            ), 503
         return jsonify(status="ok", engine=ENGINE_VERSION)
 
     @app.get("/api/me")

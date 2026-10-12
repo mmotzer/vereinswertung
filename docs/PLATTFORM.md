@@ -88,3 +88,10 @@ Wiederherstellungsproben und echte Zahlungsabläufe müssen separat nachgewiesen
 werden. Ein grüner Bericht ist keine allgemeine Freigabe zum Verkauf. Die
 Konfiguration muss wie beim Plattformprozess über Umgebungsvariablen gesetzt
 sein; der Befehl liest keine separate env-Datei automatisch.
+
+Der öffentliche `/api/health`-Endpunkt prüft einen lesenden Zugriff auf das
+Vereinsregister. Bei fehlender oder unlesbarer Datenbank liefert er HTTP 503
+ohne Dateipfade oder Vereinsdaten und ohne eine Ersatzdatenbank anzulegen.
+Er ersetzt weder die vollständige Integritätsprüfung durch `doctor` noch eine
+externe Alarmierung. Der Einzelvereins-Healthcheck prüft entsprechend die
+Kontotabelle seiner Datenbank.
