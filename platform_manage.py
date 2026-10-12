@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from club_platform import create_platform
+from vereinswertung import permissions
 
 
 def backup_platform(app):
@@ -336,16 +337,25 @@ def diagnose_platform(root, config):
                     root / "tenants" / cid / "club.sqlite"
                 ) as db:
                     integrity(db)
-                    if not db.execute(
-                        "SELECT 1 FROM users WHERE role='admin' AND active=1"
-                    ).fetchone():
-                        raise ValueError("No active administrator")
-            except (OSError, sqlite3.Error, ValueError):
+                    administrators = db.execute(
+                        "SELECT role,permissions FROM users WHERE role='admin' AND active=1"
+                    ).fetchall()
+                    effective = [
+                        permissions.effective(
+                            role, permissions.validate(json.loads(overrides))
+                        )
+                        for role, overrides in administrators
+                    ]
+                    if not any(rights["manage_users"] for rights in effective):
+                        raise ValueError(
+                            "No active administrator with account management"
+                        )
+            except (OSError, sqlite3.Error, ValueError, TypeError):
                 failed += 1
         record(
             "club_databases",
             "error" if failed else "ok",
-            f"{len(rows)} Vereinsdatenbanken geprüft, {failed} fehlerhaft oder ohne aktiven Administrator",
+            f"{len(rows)} Vereinsdatenbanken geprüft, {failed} fehlerhaft oder ohne Administrator mit Zugangsverwaltung",
         )
     except (OSError, sqlite3.Error, ValueError):
         record(

@@ -208,6 +208,37 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(statuses["club_databases"], "error")
         self.assertEqual(statuses["backup"], "error")
 
+    def test_doctor_requires_valid_administrator_management_rights(self):
+        self.seed("club-one", "a" * 32)
+        self.client.post(
+            "/v/club-one/api/login",
+            json=dict(username="admin", password="test-password-123"),
+            headers=self.origin,
+        )
+        file = self.root / "tenants" / ("a" * 32) / "club.sqlite"
+        for overrides in (
+            '{"manage_users": false}',
+            "[]",
+            "null",
+            "broken",
+            '{"manage_users": "yes"}',
+        ):
+            with self.subTest(overrides=overrides):
+                with storage.open_db(file) as db:
+                    db.execute(
+                        "UPDATE users SET permissions=? WHERE role='admin'",
+                        (overrides,),
+                    )
+                report = diagnose_platform(self.root, self.app.config)
+                self.assertFalse(report["ok"])
+                status = {
+                    item["check"]: item["status"] for item in report["checks"]
+                }
+                self.assertEqual(status["club_databases"], "error")
+        with storage.open_db(file) as db:
+            db.execute("UPDATE users SET permissions='{}' WHERE role='admin'")
+        self.assertTrue(diagnose_platform(self.root, self.app.config)["ok"])
+
     def test_doctor_rejects_incomplete_paid_launch_config(self):
         config = dict(self.app.config)
         config["PUBLIC_ORIGIN"] = "http://platform.example"

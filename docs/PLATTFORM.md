@@ -77,7 +77,7 @@ erkannten Fehler; Warnungen bleiben im Bericht sichtbar.
 
 Geprüft werden HTTPS-Konfiguration, vorhandene Zahlungsvariablen und
 Rechtstextdateien, Vereinsregister, Integrität und Fremdschlüssel der
-provisionierten Vereinsdatenbanken sowie aktive Administratoren. Die jüngste
+provisionierten Vereinsdatenbanken sowie aktive Administratoren mit gültigen Berechtigungen zur Zugangsverwaltung. Die jüngste
 abgeschlossene lokale Sicherung wird einschließlich Prüfsummen geprüft; ab
 48 Stunden Alter erscheint eine Warnung. Fehlende Sicherungen und fehlende
 Subdomain-/Proxy-Konfiguration werden ebenfalls ausgewiesen.
