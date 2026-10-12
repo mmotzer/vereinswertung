@@ -9,6 +9,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from flask import g, jsonify
+from werkzeug.exceptions import Forbidden
 
 from vereinswertung import chesscom_import, club_roster, lichess_import, storage
 
@@ -298,8 +299,16 @@ def register(
         )
         return jsonify(members=[dict(r) for r in rows])
 
+    def submission_access():
+        if not g.user or not any(
+            g.user["permissions"][key]
+            for key in ("submit", "import", "approve")
+        ):
+            raise Forbidden("Keine Berechtigung für Einreichungen")
+
     @app.get("/api/submission-players")
     def submission_players():
+        submission_access()
         rows = db().execute(
             "SELECT p.id,p.name,a.username FROM players p LEFT JOIN lichess_accounts a ON a.player_id=p.id ORDER BY p.name"
         )
@@ -392,6 +401,7 @@ def register(
 
     @app.get("/api/submissions")
     def submissions():
+        submission_access()
         rows = db().execute(
             """SELECT s.*,u.username FROM submissions s JOIN users u ON u.id=s.owner
             WHERE (? OR s.owner=?) ORDER BY CASE WHEN s.status='pending' THEN 0 ELSE 1 END,s.created DESC LIMIT 200""",

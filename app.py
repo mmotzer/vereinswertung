@@ -1469,6 +1469,7 @@ def public_source_files():
         "static/demo.trf",
         "tests/test_trial.py",
         "tests/test_platform.py",
+        "tests/test_security_matrix.py",
         "tests/test_permissions.py",
         "static/app.js",
         "static/index.html",

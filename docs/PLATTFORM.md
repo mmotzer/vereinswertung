@@ -145,3 +145,37 @@ Schwachstellenwarnungen wurden zusätzlich eingeschaltet. Der MFA-Status
 konnte über den vorhandenen GitHub-Zugang nicht ausgelesen werden. Portainer
 wird weiterhin über HTTP im Heimnetz verwaltet; dessen HTTPS-Umstellung,
 MFA und externe Backup-Wiederherstellungsprobe sind nicht abgeschlossen.
+
+## Interner Zwei-Vereins-API-Pentest – 12. Oktober 2026
+
+Reproduzierbare Testumgebung: `tests/test_security_matrix.py`. Zwei getrennte
+Vereinsdatenbanken (Alpha/Beta), identische Kontonamen und Spieler-IDs sowie
+Administrator-, Turnierleiter- und Mitgliedskonten. Temporäre Datenbanken
+werden nach jedem Test entfernt. Stripe-Aufrufe sind gemockt.
+
+Geprüft: Lesezugriffe nach Rolle auf Zugänge, Protokoll, Einstellungen,
+Mitglieder und Backups; Spielerzugriff bei kollidierenden IDs; Übertragung
+fremder Sitzungstokens; fremde Origins und CSRF-Tokens; Selbsthochstüfung
+zur Administratorrolle; Dateipfade zu Datenbanken, env und Quellcode;
+Aboportal-Berechtigung und Kundenbindung. Bestehende Tests prüfen weiterhin
+Importvalidierung, Vorschau, Genehmigung, Replay, Zahlungsereignisse,
+Rate-Limits sowie Sicherung und Wiederherstellung.
+
+Reproduzierter Befund: Konten mit allen individuellen Rechten auf false
+erhielten dennoch HTTP 200 für `/api/submission-players` und
+`/api/submissions`. Auswirkung: Spielerauswahl und eigene Einreichungsdaten
+blieben trotz entzogener Rechte abrufbar. Kein vereinsübergreifender Zugriff
+wurde dabei festgestellt. Beide Endpunkte verlangen jetzt mindestens eines
+der Rechte submit, import oder approve. Der Nachtest erwartet HTTP 403 in
+beiden Vereinen und besteht.
+
+Ergebnis: 113 Tests, Lint, Formatierung, JavaScript-Syntax und Quellarchiv-
+Importprüfung erfolgreich. Die Korrektur liegt auf main; Produktion wurde
+in diesem Testauftrag nicht aktualisiert.
+
+Grenzen: interner API-/Code-Test über Flask-Testclients, kein unabhängiger
+Pentest. Keine Prüfung realer TLS-/DNS-Infrastruktur, kein aktiver
+Browser-/Proxy-Scan, keine Last-/DoS-Angriffe und keine Livezahlungen. Die
+Tests verwenden SECURE_COOKIE=false ausschließlich lokal; Produktion bleibt
+mit Secure-Cookies konfiguriert. Die Befunde ersetzen keine vollständige
+OWASP-ASVS-Abnahme und beweisen nicht die Abwesenheit weiterer Lücken.
