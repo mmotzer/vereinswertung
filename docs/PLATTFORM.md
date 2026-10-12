@@ -24,7 +24,7 @@ Es wird eine Kopie erstellt. Bestehende Spieler, Wertungen und Zugänge bleiben 
 
 ## Betrieb und Sicherungen
 
-`compose.platform.yaml` ist eine separate Docker-Konfiguration ohne offenen Host-Port. Den freigegebenen Cloudflare-Tunnel mit dem Plattformnetz verbinden und auf Port 8080 routen. Noch keine neue öffentliche Route wurde eingerichtet. Bestehendes Vereinsvolume nicht durch das Plattformvolume ersetzen.
+`compose.platform.yaml` ist eine separate Docker-Konfiguration ohne offenen Host-Port. Den freigegebenen Cloudflare-Tunnel mit dem Plattformnetz verbinden und auf Port 8080 routen. Die Landingpage-Route ist seit dem 12. Oktober 2026 öffentlich eingerichtet; Vereins-Wildcard-Routing und HTTPS müssen vor der Aufnahme von Vereinen separat eingerichtet und getestet werden. Bestehendes Vereinsvolume nicht durch das Plattformvolume ersetzen.
 
 ```powershell
 python platform_manage.py --data data/platform backup
@@ -95,3 +95,24 @@ ohne Dateipfade oder Vereinsdaten und ohne eine Ersatzdatenbank anzulegen.
 Er ersetzt weder die vollständige Integritätsprüfung durch `doctor` noch eine
 externe Alarmierung. Der Einzelvereins-Healthcheck prüft entsprechend die
 Kontotabelle seiner Datenbank.
+
+## Öffentliche Vorschau – 12. Oktober 2026
+
+Landingpage und TRF-Probeimport sind unter
+https://vereinswertung.marcmotzer.com erreichbar. Separater Portainer-Stack
+`vereinsplattform` (73), Image `vereinswertung:1.24`, Einstieg
+`python club_platform.py`, eigenes Volume `vereinsplattform-data`, eigenes
+Netz `vereinsplattform-net` und bestehendes Tunnelnetz `robin5_tunnel-net`.
+Die Cloudflare-Route im Tunnel `robin` zeigt auf
+`http://vereinsplattform-platform-1:8080`. Der Container ist healthy.
+
+`LEGAL_READY=false`; Zahlungsvariablen sind nicht gesetzt. Die öffentliche
+Beispielberechnung und der deaktivierte Zahlungsbutton wurden im Browser
+geprüft. Keine Vereinskonten oder Abos wurden dabei angelegt. Die bestehende
+SK1912-App unter wertung.marcmotzer.com bleibt getrennt.
+
+`TENANT_DOMAIN=vereinswertung.marcmotzer.com` bereitet eigene Vereinsadressen
+vor. Die Wildcard-Route, DNS und ein gültiges Zertifikat für diese zusätzlichen
+Unterdomains sind noch nicht eingerichtet oder geprüft. Zusammen mit
+Rechtstexten und Zahlungs-Testlauf ist das Voraussetzung für die Freigabe
+der Vereinsregistrierung. Der aktuelle öffentliche Dienst ist eine Vorschau.
