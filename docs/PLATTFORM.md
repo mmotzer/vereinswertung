@@ -136,15 +136,16 @@ unabhängiger Sicherheitstest bleiben separat nachzuweisen. Die öffentliche
 Registrierung und Abos bleiben weiterhin deaktiviert.
 
 Die Anwendungshärtung ist auf beiden laufenden Diensten als Image
-`vereinswertung:1.25` aus Commit f6094cc43d333b4090d541de28df72dc7d770668
+`vereinswertung:1.26` aus Commit a89e6034a4f973f3ce3dc1536e8f558855e0d598
 ausgerollt. Frische Sicherungen beider Datenbestände wurden vorher erstellt.
 Beide Container sind healthy; angemeldete Rangliste, öffentliche Beispielauswertung
-und die produktiven Schutzheader wurden geprüft. 108 Tests und GitHub CI
+und die produktiven Schutzheader wurden geprüft. 113 Tests und GitHub CI
 bestehen. GitHub-Secret-Scanning und Push-Schutz waren bereits aktiv;
 Schwachstellenwarnungen wurden zusätzlich eingeschaltet. Der MFA-Status
-konnte über den vorhandenen GitHub-Zugang nicht ausgelesen werden. Portainer
-wird weiterhin über HTTP im Heimnetz verwaltet; dessen HTTPS-Umstellung,
-MFA und externe Backup-Wiederherstellungsprobe sind nicht abgeschlossen.
+konnte über den vorhandenen GitHub-Zugang nicht ausgelesen werden.
+Die Infrastrukturprüfung ist separat dokumentiert. Betreiber-MFA, externe
+Backup-Wiederherstellungsprobe und die vollständige Prüfung aller übrigen
+NAS-Dienste sind nicht abgeschlossen.
 
 ## Interner Zwei-Vereins-API-Pentest – 12. Oktober 2026
 
@@ -170,8 +171,11 @@ der Rechte submit, import oder approve. Der Nachtest erwartet HTTP 403 in
 beiden Vereinen und besteht.
 
 Ergebnis: 113 Tests, Lint, Formatierung, JavaScript-Syntax und Quellarchiv-
-Importprüfung erfolgreich. Die Korrektur liegt auf main; Produktion wurde
-in diesem Testauftrag nicht aktualisiert.
+Importprüfung erfolgreich. Die Korrektur ist am 12. Oktober 2026 als Image
+`vereinswertung:1.26` aus Commit a89e6034a4f973f3ce3dc1536e8f558855e0d598
+auf beiden Produktionsdiensten ausgerollt. Vorher wurden konsistente
+SQLite-Sicherungen erstellt. Beide Container sind healthy; angemeldete
+Rangliste und synthetischer Plattform-Probeimport funktionieren.
 
 Grenzen: interner API-/Code-Test über Flask-Testclients, kein unabhängiger
 Pentest. Keine Prüfung realer TLS-/DNS-Infrastruktur, kein aktiver
