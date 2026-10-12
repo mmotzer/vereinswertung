@@ -20,7 +20,7 @@ Zuerst eine aktuelle Datenbank-Sicherung herunterladen. Dann lokal oder im separ
 python platform_manage.py --data data/platform import-club --file backup.sqlite --slug sk1912 --name "SK1912 Ludwigshafen" --email "betreiber@example.org" --admin marc
 ```
 
-Es wird eine Kopie erstellt. Bestehende Spieler, Wertungen und Zugänge bleiben erhalten; Sitzungen der Kopie werden abgemeldet. Der importierte Verein erhält vorerst einen vom Betreiber verwalteten Altbestandszugang ohne Zahlungsabo. Die Quelldatenbank bleibt unverändert. Vor Umleitung der bestehenden Adresse zuerst die Kopie prüfen und während des endgültigen Umzugs Importe pausieren.
+Es wird eine Kopie erstellt. Bestehende Spieler, Wertungen und Zugänge bleiben erhalten; Sitzungen und offene Importvorschauen der Kopie werden entfernt. Integrität und Fremdschlüssel der Quelle werden vor dem Kopieren geprüft. Der importierte Verein erhält vorerst einen vom Betreiber verwalteten Altbestandszugang ohne Zahlungsabo. Die Quelldatenbank bleibt unverändert. Vor Umleitung der bestehenden Adresse zuerst die Kopie prüfen und während des endgültigen Umzugs Importe pausieren.
 
 ## Betrieb und Sicherungen
 

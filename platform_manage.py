@@ -212,6 +212,13 @@ def import_club(app, file, slug, name, email, username):
     with closing(
         sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
     ) as source:
+        if (
+            source.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
+            or source.execute("PRAGMA foreign_key_check").fetchone()
+        ):
+            raise ValueError(
+                "Quelldatenbank beschädigt oder mit ungültigen Verweisen"
+            )
         administrator = source.execute(
             "SELECT password FROM users WHERE username=? AND role='admin' AND active=1",
             (username,),
@@ -225,6 +232,7 @@ def import_club(app, file, slug, name, email, username):
             source.backup(destination)
             with destination:
                 destination.execute("DELETE FROM sessions")
+                destination.execute("DELETE FROM previews")
     with registry() as db:
         db.execute(
             "INSERT INTO clubs(id,slug,name,email,username,password,status,plan,created,provisioned) VALUES(?,?,?,?,?,?,?,?,?,1)",

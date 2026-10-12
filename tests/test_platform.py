@@ -478,6 +478,37 @@ class PlatformTests(unittest.TestCase):
                     count,
                 )
 
+    def test_migration_rejects_invalid_references_before_copying(self):
+        self.seed("club-one", "a" * 32)
+        self.client.post(
+            "/v/club-one/api/login",
+            json=dict(username="admin", password="test-password-123"),
+            headers=self.origin,
+        )
+        source = self.root / "tenants" / ("a" * 32) / "club.sqlite"
+        with storage.open_db(source) as db:
+            db.execute("PRAGMA foreign_keys=OFF")
+            db.execute(
+                "INSERT INTO previews VALUES('orphan',999999,0,'{}',9999999999)"
+            )
+        before = {file.name for file in (self.root / "tenants").iterdir()}
+        with self.assertRaisesRegex(ValueError, "ungültigen Verweisen"):
+            import_club(
+                self.app,
+                source,
+                "invalid-club",
+                "Invalid",
+                "a@example.org",
+                "admin",
+            )
+        self.assertEqual(
+            {file.name for file in (self.root / "tenants").iterdir()}, before
+        )
+        with self.registry() as db:
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM clubs").fetchone()[0], 1
+            )
+
     def test_migration_preserves_players_and_invalidates_sessions(self):
         self.seed("club-one", "a" * 32)
         self.client.post(
@@ -490,6 +521,13 @@ class PlatformTests(unittest.TestCase):
             db.execute(
                 "INSERT INTO players(name,created) VALUES(?,?)",
                 ("Original Player", time.time()),
+            )
+            uid = db.execute(
+                "SELECT id FROM users WHERE username='admin'"
+            ).fetchone()[0]
+            db.execute(
+                "INSERT INTO previews VALUES('old-preview',?,0,'{}',9999999999)",
+                (uid,),
             )
         import_club(
             self.app,
@@ -513,9 +551,15 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0
             )
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM previews").fetchone()[0], 0
+            )
         with storage.open_db(source) as db:
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 1
+            )
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM previews").fetchone()[0], 1
             )
 
     @patch("vereinswertung.billing.request")
