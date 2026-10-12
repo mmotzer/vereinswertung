@@ -694,6 +694,28 @@ class PlatformTests(unittest.TestCase):
                 db.execute("SELECT COUNT(*) FROM clubs").fetchone()[0], 0
             )
 
+    def test_missing_billing_column_rejected_before_registry_replacement(self):
+        snapshot = backup_platform(self.app)
+        file = snapshot / "platform.sqlite"
+        with storage.open_db(file) as db:
+            db.execute("ALTER TABLE clubs DROP COLUMN subscription")
+        manifest = json.loads((snapshot / "complete.json").read_text())
+        manifest["files"]["platform.sqlite"] = file_digest(file)
+        (snapshot / "complete.json").write_text(json.dumps(manifest))
+        destination = create_platform(
+            dict(DATA_ROOT=str(self.root / "restore-columns"), TESTING=True)
+        )
+        target = self.root / "restore-columns" / "platform.sqlite"
+        before = target.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Spalten fehlen"):
+            restore_backup(destination, snapshot)
+        self.assertEqual(target.read_bytes(), before)
+        with destination.extensions["registry"]() as db:
+            self.assertIn(
+                "subscription",
+                {row[1] for row in db.execute("PRAGMA table_info(clubs)")},
+            )
+
     def test_verified_restore_and_corruption_detection(self):
         self.seed("club-one", "a" * 32)
         self.client.post(

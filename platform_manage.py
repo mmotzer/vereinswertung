@@ -139,6 +139,27 @@ def verify_backup(snapshot):
             )
             if not required.issubset(tables):
                 raise ValueError("Erforderliche Tabellen fehlen: " + name)
+            columns = (
+                {"clubs": {"id", "provisioned", "status", "subscription"}}
+                if name == "platform.sqlite"
+                else {
+                    "users": {"id", "username", "password", "role", "active"},
+                    "sessions": {"token", "user_id", "csrf", "expires"},
+                    "previews": {
+                        "token",
+                        "owner",
+                        "revision",
+                        "payload",
+                        "expires",
+                    },
+                }
+            )
+            for table, fields in columns.items():
+                actual = {
+                    row[1] for row in db.execute(f"PRAGMA table_info({table})")
+                }
+                if not fields.issubset(actual):
+                    raise ValueError("Erforderliche Spalten fehlen: " + name)
     with closing(
         sqlite3.connect(
             (snapshot / "platform.sqlite").as_uri() + "?mode=ro", uri=True

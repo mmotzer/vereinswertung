@@ -58,7 +58,7 @@ python platform_manage.py --data data/platform-restored restore --snapshot data/
 python platform_manage.py --data data/platform-restored sync-billing
 ```
 
-Vor der Wiederherstellung werden auch Manifesttypen, eindeutige Vereinskennungen, Prüfsummenformat und benötigte Tabellen geprüft. Eine strukturell unvollständige Sicherung wird vor dem Anlegen von Vereinsdateien im Ziel abgewiesen.
+Vor der Wiederherstellung werden auch Manifesttypen, eindeutige Vereinskennungen, Prüfsummenformat sowie benötigte Tabellen und Spalten geprüft. Eine strukturell unvollständige Sicherung wird vor dem Anlegen von Vereinsdateien im Ziel abgewiesen.
 
 Das Ziel der Wiederherstellung muss neu und leer sein. Alte Anmeldesitzungen werden verworfen. Bezahlte Vereine bleiben bis zum aktuellen Abo-Abgleich pausiert; dieser benötigt die gültige Stripe-Konfiguration. Automatische tägliche Backups zählen nur vollständig abgeschlossene Snapshots mit `complete.json`. Der laufende Plattformprozess gleicht Abos stündlich ab. Dieser Prozess ist für eine Instanz ausgelegt.
 
