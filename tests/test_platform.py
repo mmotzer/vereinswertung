@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -767,6 +768,40 @@ class PlatformTests(unittest.TestCase):
         self.assertTrue(
             self.client.get("/api/platform/status?slug=club-new").json["ready"]
         )
+
+    def test_backup_does_not_create_missing_source_register(self):
+        self.app.config["DATA_ROOT"] = str(self.root / "missing-source")
+        with self.assertRaises(sqlite3.OperationalError):
+            backup_platform(self.app)
+        self.assertFalse(
+            (self.root / "missing-source" / "platform.sqlite").exists()
+        )
+        self.assertEqual(
+            list(
+                (self.root / "missing-source").glob("backups/*/complete.json")
+            ),
+            [],
+        )
+
+    def test_invalid_backup_has_no_completion_marker(self):
+        self.seed("club-one", "a" * 32)
+        self.client.post(
+            "/v/club-one/api/login",
+            json=dict(username="admin", password="test-password-123"),
+            headers=self.origin,
+        )
+        file = self.root / "tenants" / ("a" * 32) / "club.sqlite"
+        with storage.open_db(file) as db:
+            db.execute("PRAGMA foreign_keys=OFF")
+            db.execute(
+                "INSERT INTO previews VALUES('invalid',999999,0,'{}',9999999999)"
+            )
+        with self.assertRaisesRegex(ValueError, "Datenbank beschädigt"):
+            backup_platform(self.app)
+        self.assertEqual(
+            list((self.root / "backups").glob("*/complete.json")), []
+        )
+        self.assertTrue(file.is_file())
 
     def test_invalid_backup_manifest_is_rejected_before_restore(self):
         snapshot = backup_platform(self.app)

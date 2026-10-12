@@ -31,7 +31,11 @@ def backup_platform(app):
     # Registry and each SQLite database are independently consistent snapshots.
     # Pause registrations/billing for a coordinated full restore point.
     with (
-        closing(sqlite3.connect(root / "platform.sqlite")) as source,
+        closing(
+            sqlite3.connect(
+                (root / "platform.sqlite").as_uri() + "?mode=ro", uri=True
+            )
+        ) as source,
         closing(sqlite3.connect(target / "platform.sqlite")) as destination,
     ):
         source.backup(destination)
@@ -51,7 +55,9 @@ def backup_platform(app):
         folder = target / "tenants" / cid
         folder.mkdir(parents=True)
         with (
-            closing(sqlite3.connect(file)) as source,
+            closing(
+                sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
+            ) as source,
             closing(sqlite3.connect(folder / "club.sqlite")) as destination,
         ):
             source.backup(destination)
@@ -69,6 +75,7 @@ def backup_platform(app):
         ),
         encoding="utf-8",
     )
+    verify_backup(target, pending=True)
     marker.replace(target / "complete.json")
     return target
 
@@ -81,10 +88,12 @@ def file_digest(file):
     return digest.hexdigest()
 
 
-def verify_backup(snapshot):
+def verify_backup(snapshot, *, pending=False):
     snapshot = Path(snapshot).resolve()
     manifest = json.loads(
-        (snapshot / "complete.json").read_text(encoding="utf-8")
+        (snapshot / ("complete.tmp" if pending else "complete.json")).read_text(
+            encoding="utf-8"
+        )
     )
     if not isinstance(manifest, dict):
         raise ValueError("Ungültiges Sicherungsmanifest")
