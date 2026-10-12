@@ -549,21 +549,24 @@ def create_app(config=None):
             .execute("SELECT * FROM users WHERE id=?", (g.user["id"],))
             .fetchone()
         )
-        check_limit("password:" + str(g.user["id"]))
+        limit_key = "password:" + str(g.user["id"])
         old = data.get("old_password", "")
         if (
             not isinstance(old, str)
             or len(old) > 200
-            or not check_password_hash(user["password"], old)
+            or not verify_password(user["password"], old)
         ):
+            check_limit(limit_key)
             raise ValueError("Bisheriges Passwort falsch")
         _, new = credentials(
             {"username": user["username"], "password": data.get("password")}
         )
+        hashed = hash_password(new)
         with db():
+            db().execute("DELETE FROM attempts WHERE key=?", (limit_key,))
             db().execute(
                 "UPDATE users SET password=? WHERE id=?",
-                (generate_password_hash(new), user["id"]),
+                (hashed, user["id"]),
             )
             db().execute(
                 "DELETE FROM sessions WHERE user_id=? AND token<>?",

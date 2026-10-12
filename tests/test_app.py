@@ -1370,6 +1370,40 @@ class AppTests(unittest.TestCase):
         self.assertEqual(client.get("/api/rankings").status_code, 200)
         self.assertNotIn(b"private-login", client.get("/").data)
 
+    def test_password_change_revokes_other_sessions_after_failed_attempts(self):
+        other = self.app.test_client()
+        other_csrf = self.login("admin", other)
+        body = {"old_password": "wrong", "password": "new-test-password-123"}
+        for _ in range(10):
+            self.assertEqual(self.post("/api/password", body).status_code, 400)
+        self.assertEqual(self.post("/api/password", body).status_code, 429)
+        # Failed attempts must neither change the password nor revoke sessions.
+        self.assertEqual(other.get("/api/rankings").status_code, 200)
+        body["old_password"] = "long-password-for-test"
+        result = self.post("/api/password", body)
+        self.assertEqual(result.status_code, 200, result.json)
+        self.assertEqual(self.client.get("/api/rankings").status_code, 200)
+        self.assertEqual(other.get("/api/rankings").status_code, 401)
+        self.assertEqual(
+            self.post(
+                "/api/logout", {}, client=other, csrf=other_csrf
+            ).status_code,
+            401,
+        )
+        anonymous = self.app.test_client()
+        result = self.post(
+            "/api/login",
+            {"username": "admin", "password": "long-password-for-test"},
+            client=anonymous,
+        )
+        self.assertEqual(result.status_code, 401)
+        result = self.post(
+            "/api/login",
+            {"username": "admin", "password": body["password"]},
+            client=anonymous,
+        )
+        self.assertEqual(result.status_code, 200, result.json)
+
     def test_valid_password_survives_failed_attempts(self):
         anonymous = self.app.test_client()
         for _ in range(11):
