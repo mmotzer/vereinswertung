@@ -181,6 +181,34 @@ class PlatformTests(unittest.TestCase):
             self.client.get("/v/club-two/api/rankings").status_code, 200
         )
 
+    def test_host_and_browser_security_boundaries(self):
+        response = self.client.get("/", base_url="https://attacker.example")
+        self.assertEqual(response.status_code, 400)
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            response = self.client.open(
+                "/api/platform/try",
+                method=method,
+                headers={"Origin": "https://attacker.example"},
+            )
+            self.assertEqual(response.status_code, 403)
+        response = self.client.get("/", base_url="https://platform.example")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get("/api/health").status_code, 200)
+        self.assertEqual(
+            response.headers["Permissions-Policy"],
+            "camera=(), microphone=(), geolocation=()",
+        )
+        self.assertEqual(
+            response.headers["Cross-Origin-Opener-Policy"], "same-origin"
+        )
+        self.assertEqual(
+            response.headers["Cross-Origin-Resource-Policy"], "same-origin"
+        )
+        self.assertIn(
+            "frame-ancestors 'none'",
+            response.headers["Content-Security-Policy"],
+        )
+
     def test_healthcheck_detects_unreadable_register(self):
         self.assertEqual(self.client.get("/api/health").status_code, 200)
         file = self.root / "platform.sqlite"

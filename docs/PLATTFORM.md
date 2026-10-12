@@ -116,3 +116,21 @@ vor. Die Wildcard-Route, DNS und ein gültiges Zertifikat für diese zusätzlich
 Unterdomains sind noch nicht eingerichtet oder geprüft. Zusammen mit
 Rechtstexten und Zahlungs-Testlauf ist das Voraussetzung für die Freigabe
 der Vereinsregistrierung. Der aktuelle öffentliche Dienst ist eine Vorschau.
+
+## Anwendungshärtung – 12. Oktober 2026
+
+Bei konfigurierter öffentlicher Adresse werden fremde Hostnamen abgewiesen;
+localhost und 127.0.0.1 bleiben für interne Healthchecks erlaubt. Schreibende
+Anfragen werden auch für PUT, PATCH und DELETE auf ihren Ursprung geprüft.
+Browserheader sperren fremde Fensterverknüpfungen und Ressourcen-Einbettung
+sowie Kamera, Mikrofon und Standortzugriff. CSP und Anmeldung bleiben aktiv.
+
+Die festgelegten Laufzeitpakete wurden mit pip-audit 2.10.1 geprüft: zum
+Prüfzeitpunkt keine bekannten gemeldeten Sicherheitslücken. GitHub CI prüft
+diese Pakete bei Änderungen und täglich. Der Prüfbericht ist lokal unter
+.runtime/security-audit.json gespeichert und nicht veröffentlicht. Das ist
+keine Garantie gegen unbekannte Schwachstellen.
+
+MFA bei Betreiberkonten, externe Sicherungskopien, Alarmierung und ein
+unabhängiger Sicherheitstest bleiben separat nachzuweisen. Die öffentliche
+Registrierung und Abos bleiben weiterhin deaktiviert.

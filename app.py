@@ -69,6 +69,9 @@ def create_app(config=None):
     )
     if config:
         app.config.update(config)
+    public_host = urlparse(app.config["PUBLIC_ORIGIN"]).hostname
+    if public_host:
+        app.config["TRUSTED_HOSTS"] = [public_host, "localhost", "127.0.0.1"]
     if len(app.config["BOOTSTRAP_TOKEN"]) < 24:
         raise RuntimeError(
             "BOOTSTRAP_TOKEN mit mindestens 24 Zeichen setzen (siehe README)"
@@ -239,6 +242,8 @@ def create_app(config=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
         )

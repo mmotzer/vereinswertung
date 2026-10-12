@@ -2,6 +2,8 @@ name: Repository checks
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "17 5 * * *"
 permissions:
   contents: read
 concurrency:
@@ -21,3 +23,4 @@ jobs:
           node-version: '22'
       - run: python -m pip install -r requirements-dev.txt
       - run: python tools/check.py
+      - run: python -m pip_audit -r requirements.txt --no-deps --disable-pip
