@@ -134,3 +134,14 @@ keine Garantie gegen unbekannte Schwachstellen.
 MFA bei Betreiberkonten, externe Sicherungskopien, Alarmierung und ein
 unabhängiger Sicherheitstest bleiben separat nachzuweisen. Die öffentliche
 Registrierung und Abos bleiben weiterhin deaktiviert.
+
+Die Anwendungshärtung ist auf beiden laufenden Diensten als Image
+`vereinswertung:1.25` aus Commit f6094cc43d333b4090d541de28df72dc7d770668
+ausgerollt. Frische Sicherungen beider Datenbestände wurden vorher erstellt.
+Beide Container sind healthy; angemeldete Rangliste, öffentliche Beispielauswertung
+und die produktiven Schutzheader wurden geprüft. 108 Tests und GitHub CI
+bestehen. GitHub-Secret-Scanning und Push-Schutz waren bereits aktiv;
+Schwachstellenwarnungen wurden zusätzlich eingeschaltet. Der MFA-Status
+konnte über den vorhandenen GitHub-Zugang nicht ausgelesen werden. Portainer
+wird weiterhin über HTTP im Heimnetz verwaltet; dessen HTTPS-Umstellung,
+MFA und externe Backup-Wiederherstellungsprobe sind nicht abgeschlossen.
