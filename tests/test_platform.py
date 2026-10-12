@@ -354,6 +354,42 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(self.event(event).status_code, 200)
         self.assertEqual(mock.call_count, count)
 
+    @patch("vereinswertung.billing.request")
+    def test_signed_malformed_webhooks_do_not_change_state(self, mock):
+        self.seed("club-one", "a" * 32)
+        base = dict(
+            id="evt_malformed",
+            created=10,
+            type="customer.subscription.updated",
+            data=dict(object=dict(id="sub_test")),
+        )
+        for changes in (
+            {"data": []},
+            {"data": None},
+            {"data": {"object": []}},
+            {"created": True},
+            {"created": -1},
+            {"id": ""},
+            {"type": []},
+        ):
+            with self.subTest(changes=changes):
+                result = self.event({**base, **changes})
+                self.assertEqual(result.status_code, 400)
+                with self.registry() as db:
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM events").fetchone()[0],
+                        0,
+                    )
+                    self.assertEqual(
+                        db.execute("SELECT status FROM clubs").fetchone()[0],
+                        "active",
+                    )
+        mock.assert_not_called()
+
+    def test_non_ascii_webhook_signature_is_cleanly_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Signatur"):
+            billing.verify(b"{}", "t=1000,v1=ä", "secret", now=1000)
+
     def test_webhook_signature(self):
         raw = b'{"id":"test"}'
         signature = hmac.new(

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import re
 import time
 import urllib.request
 from urllib.parse import urlencode
@@ -46,7 +47,9 @@ def verify(raw, signature, secret, now=None):
         secret.encode(), str(stamp).encode() + b"." + raw, hashlib.sha256
     ).hexdigest()
     if not any(
-        key == "v1" and hmac.compare_digest(value, expected)
+        key == "v1"
+        and re.fullmatch(r"[a-f0-9]{64}", value)
+        and hmac.compare_digest(value, expected)
         for key, value in pairs
     ):
         raise ValueError("Ungültige Webhook-Signatur")

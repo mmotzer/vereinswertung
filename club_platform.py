@@ -485,12 +485,19 @@ def create_platform(config=None):
             return process_webhook(event)
 
     def process_webhook(event):
-        if not isinstance(event.get("id"), str) or not isinstance(
-            event.get("created"), int
+        if (
+            not isinstance(event.get("id"), str)
+            or not event["id"]
+            or type(event.get("created")) is not int
+            or event["created"] < 0
+            or not isinstance(event.get("type"), str)
+            or not event["type"]
+            or not isinstance(event.get("data"), dict)
+            or not isinstance(event["data"].get("object"), dict)
         ):
             raise ValueError("Ungültiges Zahlungsereignis")
-        obj = event.get("data", {}).get("object", {})
-        kind = event.get("type")
+        obj = event["data"]["object"]
+        kind = event["type"]
         with registry() as db:
             if db.execute(
                 "SELECT 1 FROM events WHERE id=?", (event["id"],)
