@@ -260,6 +260,7 @@ def register(
                     raise ValueError(
                         "Dieser Zugang ist nicht zur Übernahme verfügbar"
                     )
+                db().execute("DELETE FROM sessions WHERE user_id=?", (uid,))
                 db().execute(
                     "UPDATE club_members SET claimed=? WHERE player_id=?",
                     (time.time(), invite["player_id"]),

@@ -7,6 +7,7 @@ import unittest
 import zipfile
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 from app import backup_database, create_app
 from vereinswertung import club_roster, storage, trf
@@ -1313,6 +1314,68 @@ class AppTests(unittest.TestCase):
             )
         self.login("claimed", anon)
         self.assertEqual(anon.get("/api/club-members").status_code, 403)
+
+    def test_member_claim_removes_preexisting_inactive_sessions(self):
+        with storage.open_db(self.path) as db:
+            club_roster.provision(
+                db, [{"name": "Claim Test", "club_number": "0009"}]
+            )
+            member = db.execute(
+                "SELECT user_id,player_id FROM club_members WHERE club_number='0009'"
+            ).fetchone()
+            uid, pid = member["user_id"], member["player_id"]
+            db.execute(
+                "INSERT INTO sessions VALUES('old-claim-token',?,'old-csrf',9999999999)",
+                (uid,),
+            )
+        code = self.post("/api/invitations", {"player_id": pid}).json["code"]
+        result = self.post(
+            "/api/register",
+            {
+                "code": code,
+                "username": "new-claim",
+                "password": "long-password-for-test",
+            },
+            client=self.app.test_client(),
+        )
+        self.assertEqual(result.status_code, 200, result.json)
+        with storage.open_db(self.path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT COUNT(*) FROM sessions WHERE user_id=?", (uid,)
+                ).fetchone()[0],
+                0,
+            )
+        self.login("new-claim", self.app.test_client())
+
+    def test_invitation_expiring_during_hashing_does_not_create_account(self):
+        code = self.post("/api/invitations", {}).json["code"]
+
+        def expire_and_hash(password):
+            with storage.open_db(self.path) as db:
+                db.execute("UPDATE invitations SET expires=0")
+            return "unused-hash"
+
+        with patch("app.generate_password_hash", side_effect=expire_and_hash):
+            result = self.post(
+                "/api/register",
+                {
+                    "code": code,
+                    "username": "expired-claim",
+                    "password": "long-password-for-test",
+                },
+                client=self.app.test_client(),
+            )
+        self.assertEqual(result.status_code, 400)
+        with storage.open_db(self.path) as db:
+            self.assertIsNone(
+                db.execute(
+                    "SELECT id FROM users WHERE username='expired-claim'"
+                ).fetchone()
+            )
+            self.assertIsNone(
+                db.execute("SELECT used_by FROM invitations").fetchone()[0]
+            )
 
     def test_roster_is_idempotent_and_matches_transliterated_names(self):
         path = Path(self.tmp.name) / "roster.json"
