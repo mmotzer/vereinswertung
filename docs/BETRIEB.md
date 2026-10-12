@@ -30,11 +30,11 @@ für die lokale HTTP-Vorschau. Auf dem NAS werden Secure-Cookies aktiviert.
 
    ```sh
    cd /dein/pfad/vereinswertung
-   docker build -t vereinswertung:1.23 .
+   docker build -t vereinswertung:1.24 .
    ```
 
    Alternativ in Portainer unter **Images → Build a new image** den Projektordner
-   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.23` als Namen verwenden.
+   als Build-Kontext (tar.gz) hochladen und `vereinswertung:1.24` als Namen verwenden.
    Das Image ist lokal und wird nicht in eine öffentliche Registry hochgeladen.
 3. In Portainer **Stacks → Add stack**: Namen `vereinswertung`, Inhalt aus
    `compose.yaml` einfügen. Unter Environment variables `BOOTSTRAP_TOKEN` setzen.
@@ -122,7 +122,7 @@ Wiederherstellung **bei gestoppter App** mit dem mitgelieferten CLI:
 docker run --rm -it --network none \
   -v vereinswertung-data:/data \
   -e DATABASE=/data/club.sqlite \
-  vereinswertung:1.23 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
+  vereinswertung:1.24 python manage.py restore --file /data/backups/DEINE_SICHERUNG.sqlite
 ```
 
 Danach App wieder starten. Die vorhandene DB wird vorher gesichert; Sitzungen
@@ -198,3 +198,13 @@ Unter Einreichen die Plattform Chess.com auswählen, Spieler, Online-Namen und S
 ## Vereinsplattform (lokaler Pilot)
 
 Mehrere Vereine mit getrennten Datenbanken sowie konfigurierbaren Monats- und Jahresabos: siehe [Plattformbetrieb](PLATTFORM.md). Die bestehende Einzelvereins-App und der laufende NAS-Stack werden dadurch nicht umgestellt.
+
+## Produktionsstand 12. Oktober 2026
+
+Die bestehende Einzelvereins-App wurde auf `vereinswertung:1.24` aktualisiert,
+gebaut aus Commit `75e4d84401b3986f14c62b553f2788c3ad5e4b73`. Vorher wurde eine
+konsistente Sicherung erstellt. Datenbankintegrität, unveränderte Bestandszahlen,
+Container-Healthcheck und die angemeldete Rangliste wurden nach dem Neustart
+geprüft. Das Datenvolume und die bestehenden Tunnelnetze bleiben erhalten.
+Die alte Version `vereinswertung:1.23` bleibt als Rückfalloption vorhanden.
+Die separate Plattform und Livezahlungen wurden nicht freigeschaltet.
