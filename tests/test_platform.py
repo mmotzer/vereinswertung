@@ -417,6 +417,59 @@ class PlatformTests(unittest.TestCase):
                     )
         mock.assert_not_called()
 
+    @patch("vereinswertung.billing.request")
+    def test_malformed_payment_references_are_rejected_before_processing(
+        self, mock
+    ):
+        self.seed("club-new", "a" * 32, "pending")
+        with self.registry() as db:
+            db.execute("UPDATE clubs SET checkout='cs_test'")
+        base = dict(
+            id="cs_test",
+            client_reference_id="a" * 32,
+            subscription="sub_test",
+            customer="cus_test",
+            payment_status="paid",
+        )
+        for changes in (
+            {"id": []},
+            {"id": ""},
+            {"client_reference_id": {}},
+            {"subscription": []},
+            {"customer": True},
+            {"subscription": None},
+            {"customer": None},
+        ):
+            with self.subTest(changes=changes):
+                result = self.event(
+                    dict(
+                        id="evt_refs",
+                        created=10,
+                        type="checkout.session.completed",
+                        data=dict(object={**base, **changes}),
+                    )
+                )
+                self.assertEqual(result.status_code, 400)
+                with self.registry() as db:
+                    self.assertEqual(
+                        db.execute("SELECT status FROM clubs").fetchone()[0],
+                        "pending",
+                    )
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM events").fetchone()[0],
+                        0,
+                    )
+        result = self.event(
+            dict(
+                id="evt_sub_refs",
+                created=10,
+                type="customer.subscription.updated",
+                data=dict(object=dict(id={})),
+            )
+        )
+        self.assertEqual(result.status_code, 400)
+        mock.assert_not_called()
+
     def test_non_ascii_webhook_signature_is_cleanly_rejected(self):
         with self.assertRaisesRegex(ValueError, "Signatur"):
             billing.verify(b"{}", "t=1000,v1=ä", "secret", now=1000)

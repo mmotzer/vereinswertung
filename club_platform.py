@@ -509,6 +509,25 @@ def create_platform(config=None):
             raise ValueError("Ungültiges Zahlungsereignis")
         obj = event["data"]["object"]
         kind = event["type"]
+        if kind in (
+            "checkout.session.completed",
+            "checkout.session.async_payment_succeeded",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
+            if not isinstance(obj.get("id"), str) or not obj["id"]:
+                raise ValueError("Zahlungsobjekt-Kennung fehlt")
+            for field in (
+                "id",
+                "client_reference_id",
+                "subscription",
+                "customer",
+            ):
+                value = obj.get(field)
+                if value is not None and (
+                    not isinstance(value, str) or not value or len(value) > 255
+                ):
+                    raise ValueError("Ungültige Zahlungszuordnung")
         with registry() as db:
             if db.execute(
                 "SELECT 1 FROM events WHERE id=?", (event["id"],)
@@ -529,11 +548,11 @@ def create_platform(config=None):
                 ), 409
             if club and club["checkout"] != obj.get("id"):
                 raise ValueError("Checkout-Zuordnung stimmt nicht überein")
-            if (
-                club
-                and obj.get("payment_status") == "paid"
-                and obj.get("subscription")
-            ):
+            if club and obj.get("payment_status") == "paid":
+                if not obj.get("subscription") or not obj.get("customer"):
+                    raise ValueError(
+                        "Bezahltes Vereinsabo ohne vollständige Zuordnung"
+                    )
                 subscription = billing.request(
                     app.config, "subscriptions/" + obj["subscription"]
                 )
