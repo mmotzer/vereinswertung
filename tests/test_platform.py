@@ -563,6 +563,59 @@ class PlatformTests(unittest.TestCase):
             )
 
     @patch("vereinswertung.billing.request")
+    def test_invalid_checkout_response_keeps_reservation_retryable(self, mock):
+        replies = [
+            [],
+            {"url": "https://checkout.stripe.com/test"},
+            {"id": [], "url": "https://checkout.stripe.com/test"},
+            {
+                "id": "cs_test",
+                "url": "https://checkout.stripe.com:invalid/test",
+            },
+        ]
+        keys = []
+
+        def call(config, path, fields=None, idempotency=None):
+            if path == "checkout/sessions":
+                keys.append(idempotency)
+                if replies:
+                    return replies.pop(0)
+            return self.stripe(config, path, fields, idempotency)
+
+        mock.side_effect = call
+        data = dict(
+            name="New Club",
+            slug="club-new",
+            email="a@example.org",
+            username="admin",
+            password="test-password-123",
+            plan="month",
+            terms=True,
+        )
+        for _ in range(4):
+            result = self.client.post(
+                "/api/platform/checkout", json=data, headers=self.origin
+            )
+            self.assertEqual(result.status_code, 502, result.json)
+            with self.registry() as db:
+                row = db.execute("SELECT status,checkout FROM clubs").fetchone()
+                self.assertEqual(row["status"], "pending")
+                self.assertIsNone(row["checkout"])
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM clubs").fetchone()[0], 1
+                )
+        result = self.client.post(
+            "/api/platform/checkout", json=data, headers=self.origin
+        )
+        self.assertEqual(result.status_code, 200, result.json)
+        self.assertEqual(len(set(keys)), 1)
+        with self.registry() as db:
+            self.assertEqual(
+                db.execute("SELECT checkout FROM clubs").fetchone()[0],
+                "cs_test",
+            )
+
+    @patch("vereinswertung.billing.request")
     def test_retry_after_checkout_timeout_keeps_idempotency(self, mock):
         keys = []
         fail = [True]

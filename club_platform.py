@@ -454,18 +454,29 @@ def create_platform(config=None):
             session = billing.request(
                 app.config, "checkout/sessions", fields, "club-" + cid
             )
+            if (
+                not isinstance(session, dict)
+                or not isinstance(session.get("id"), str)
+                or not 3 < len(session["id"]) <= 255
+                or not session["id"].startswith("cs_")
+                or not isinstance(session.get("url"), str)
+            ):
+                raise ValueError("Ungültige Zahlungsantwort")
+            address = urlparse(session["url"])
+            if (
+                address.hostname != "checkout.stripe.com"
+                or address.scheme != "https"
+                or address.username
+                or address.password
+                or address.port not in (None, 443)
+            ):
+                raise ValueError("Ungültige Zahlungsadresse")
         except Exception:
             # A timeout can happen after Stripe created the session. Keep the
             # reservation; identical credentials retry the same idempotency key.
             return jsonify(
                 error="Zahlungsdienst nicht erreichbar. Bitte erneut versuchen."
             ), 502
-        if (
-            not isinstance(session.get("url"), str)
-            or urlparse(session["url"]).hostname != "checkout.stripe.com"
-            or urlparse(session["url"]).scheme != "https"
-        ):
-            raise ValueError("Ungültige Zahlungsadresse")
         with registry() as db:
             db.execute(
                 "UPDATE clubs SET checkout=? WHERE id=?", (session["id"], cid)
