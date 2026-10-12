@@ -495,6 +495,19 @@ def create_platform(config=None):
         with billing_lock:
             return process_webhook(event)
 
+    def validate_subscription(subscription, club_id, customer):
+        if (
+            not isinstance(subscription, dict)
+            or not isinstance(subscription.get("metadata"), dict)
+            or subscription["metadata"].get("club_id") != club_id
+            or not isinstance(customer, str)
+            or not customer
+            or subscription.get("customer") != customer
+            or not isinstance(subscription.get("status"), str)
+            or not subscription["status"]
+        ):
+            raise ValueError("Abo-Zuordnung oder Zahlungsantwort ungültig")
+
     def process_webhook(event):
         if (
             not isinstance(event.get("id"), str)
@@ -556,13 +569,7 @@ def create_platform(config=None):
                 subscription = billing.request(
                     app.config, "subscriptions/" + obj["subscription"]
                 )
-                if (
-                    subscription.get("metadata", {}).get("club_id")
-                    != club["id"]
-                ):
-                    raise ValueError("Abo-Zuordnung stimmt nicht überein")
-                if subscription.get("customer") != obj.get("customer"):
-                    raise ValueError("Kunden-Zuordnung stimmt nicht überein")
+                validate_subscription(subscription, club["id"], obj["customer"])
                 with registry() as db:
                     db.execute(
                         "UPDATE clubs SET status=?,customer=?,subscription=?,event_created=MAX(event_created,?) WHERE id=?",
@@ -583,11 +590,14 @@ def create_platform(config=None):
             # Retrieve current state instead of trusting delivery order of webhook snapshots.
             with registry() as db:
                 associated = db.execute(
-                    "SELECT 1 FROM clubs WHERE subscription=?", (obj.get("id"),)
+                    "SELECT * FROM clubs WHERE subscription=?", (obj.get("id"),)
                 ).fetchone()
             if associated:
                 subscription = billing.request(
                     app.config, "subscriptions/" + obj["id"]
+                )
+                validate_subscription(
+                    subscription, associated["id"], associated["customer"]
                 )
                 with registry() as db:
                     db.execute(
@@ -752,11 +762,7 @@ def create_platform(config=None):
                 subscription = billing.request(
                     app.config, "subscriptions/" + row["subscription"]
                 )
-                if (
-                    subscription.get("metadata", {}).get("club_id") != row["id"]
-                    or subscription.get("customer") != row["customer"]
-                ):
-                    raise ValueError("Abo-Zuordnung stimmt nicht überein")
+                validate_subscription(subscription, row["id"], row["customer"])
                 with registry() as db:
                     db.execute(
                         "UPDATE clubs SET status=? WHERE id=? AND subscription=?",

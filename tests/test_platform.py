@@ -709,9 +709,13 @@ class PlatformTests(unittest.TestCase):
         self.seed("club-one", "a" * 32)
         with self.registry() as db:
             db.execute(
-                'UPDATE clubs SET subscription="sub_test" WHERE slug="club-one"'
+                'UPDATE clubs SET subscription="sub_test",customer="cus_test" WHERE slug="club-one"'
             )
-        mock.return_value = dict(status="canceled")
+        mock.return_value = dict(
+            status="canceled",
+            customer="cus_test",
+            metadata=dict(club_id="a" * 32),
+        )
         event = dict(
             id="evt_old",
             created=10,
@@ -858,6 +862,64 @@ class PlatformTests(unittest.TestCase):
             file.write(b"corrupted")
         with self.assertRaises(ValueError):
             verify_backup(snapshot)
+
+    @patch("vereinswertung.billing.request")
+    def test_subscription_update_and_sync_reject_wrong_club_response(
+        self, mock
+    ):
+        self.seed("club-one", "a" * 32, "suspended")
+        with self.registry() as db:
+            db.execute(
+                "UPDATE clubs SET subscription='sub_test',customer='cus_test'"
+            )
+        valid = dict(
+            status="active",
+            customer="cus_test",
+            metadata=dict(club_id="a" * 32),
+        )
+        for response in (
+            [],
+            {**valid, "metadata": []},
+            {**valid, "customer": "cus_other"},
+            {**valid, "metadata": dict(club_id="b" * 32)},
+            {**valid, "status": None},
+        ):
+            with self.subTest(response=response):
+                mock.return_value = response
+                with self.assertRaises(ValueError):
+                    self.app.extensions["sync_billing"]()
+                result = self.event(
+                    dict(
+                        id="evt_invalid_response",
+                        created=10,
+                        type="customer.subscription.updated",
+                        data=dict(object=dict(id="sub_test")),
+                    )
+                )
+                self.assertEqual(result.status_code, 400)
+                with self.registry() as db:
+                    self.assertEqual(
+                        db.execute("SELECT status FROM clubs").fetchone()[0],
+                        "suspended",
+                    )
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM events").fetchone()[0],
+                        0,
+                    )
+        mock.return_value = valid
+        result = self.event(
+            dict(
+                id="evt_valid_response",
+                created=11,
+                type="customer.subscription.updated",
+                data=dict(object=dict(id="sub_test")),
+            )
+        )
+        self.assertEqual(result.status_code, 200)
+        with self.registry() as db:
+            self.assertEqual(
+                db.execute("SELECT status FROM clubs").fetchone()[0], "active"
+            )
 
     @patch("vereinswertung.billing.request")
     def test_reconcile_missed_cancellation(self, mock):
