@@ -13,6 +13,7 @@ from club_platform import create_platform
 from platform_manage import (
     backup_platform,
     diagnose_platform,
+    file_digest,
     import_club,
     restore_backup,
     verify_backup,
@@ -535,6 +536,52 @@ class PlatformTests(unittest.TestCase):
         self.assertTrue(
             self.client.get("/api/platform/status?slug=club-new").json["ready"]
         )
+
+    def test_invalid_backup_manifest_is_rejected_before_restore(self):
+        snapshot = backup_platform(self.app)
+        original = json.loads((snapshot / "complete.json").read_text())
+        destination = create_platform(
+            dict(DATA_ROOT=str(self.root / "restore-invalid"), TESTING=True)
+        )
+        target = self.root / "restore-invalid" / "platform.sqlite"
+        before = target.read_bytes()
+        for manifest in (
+            [],
+            {**original, "files": []},
+            {**original, "files": {"platform.sqlite": 123}},
+            {**original, "clubs": ["a" * 32, "a" * 32]},
+        ):
+            with self.subTest(manifest=manifest):
+                (snapshot / "complete.json").write_text(json.dumps(manifest))
+                with self.assertRaises(ValueError):
+                    restore_backup(destination, snapshot)
+                self.assertEqual(target.read_bytes(), before)
+                self.assertFalse((target.parent / "tenants").exists())
+
+    def test_missing_restore_tables_rejected_before_destination_changes(self):
+        self.seed("club-one", "a" * 32)
+        self.client.post(
+            "/v/club-one/api/login",
+            json=dict(username="admin", password="test-password-123"),
+            headers=self.origin,
+        )
+        snapshot = backup_platform(self.app)
+        name = "tenants/" + "a" * 32 + "/club.sqlite"
+        with storage.open_db(snapshot / name) as db:
+            db.execute("DROP TABLE previews")
+        manifest = json.loads((snapshot / "complete.json").read_text())
+        manifest["files"][name] = file_digest(snapshot / name)
+        (snapshot / "complete.json").write_text(json.dumps(manifest))
+        destination = create_platform(
+            dict(DATA_ROOT=str(self.root / "restore-schema"), TESTING=True)
+        )
+        with self.assertRaisesRegex(ValueError, "Tabellen fehlen"):
+            restore_backup(destination, snapshot)
+        self.assertFalse((self.root / "restore-schema" / "tenants").exists())
+        with destination.extensions["registry"]() as db:
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM clubs").fetchone()[0], 0
+            )
 
     def test_verified_restore_and_corruption_detection(self):
         self.seed("club-one", "a" * 32)

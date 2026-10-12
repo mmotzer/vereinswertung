@@ -85,6 +85,8 @@ def verify_backup(snapshot):
     manifest = json.loads(
         (snapshot / "complete.json").read_text(encoding="utf-8")
     )
+    if not isinstance(manifest, dict):
+        raise ValueError("Ungültiges Sicherungsmanifest")
     ids = manifest.get("clubs")
     if (
         manifest.get("version") != 1
@@ -95,12 +97,20 @@ def verify_backup(snapshot):
         )
     ):
         raise ValueError("Ungültige Sicherung")
+    if len(ids) != len(set(ids)):
+        raise ValueError("Doppelte Vereinskennungen in der Sicherung")
+    files = manifest.get("files")
+    if not isinstance(files, dict) or any(
+        not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+        for digest in files.values()
+    ):
+        raise ValueError("Ungültige Sicherungsprüfsummen")
     expected = {"platform.sqlite"} | {
         "tenants/" + cid + "/club.sqlite" for cid in ids
     }
-    if set(manifest.get("files", {})) != expected:
+    if set(files) != expected:
         raise ValueError("Unvollständige Sicherung")
-    for name, digest in manifest["files"].items():
+    for name, digest in files.items():
         if (
             not (snapshot / name).resolve().is_relative_to(snapshot)
             or (snapshot / name).is_symlink()
@@ -115,6 +125,19 @@ def verify_backup(snapshot):
                 or db.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
             ):
                 raise ValueError("Datenbank beschädigt: " + name)
+            tables = {
+                row[0]
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            required = (
+                {"clubs"}
+                if name == "platform.sqlite"
+                else {"users", "sessions", "previews"}
+            )
+            if not required.issubset(tables):
+                raise ValueError("Erforderliche Tabellen fehlen: " + name)
     with closing(
         sqlite3.connect(
             (snapshot / "platform.sqlite").as_uri() + "?mode=ro", uri=True
